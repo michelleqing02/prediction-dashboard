@@ -3,3 +3,5 @@ dist
 .env
 backend/.env
 frontend/.env
+.tmp_agents/
+.tmp_*

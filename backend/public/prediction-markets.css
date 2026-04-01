@@ -320,6 +320,10 @@ input:focus {
   align-items: stretch;
 }
 
+.board-row.single-venue {
+  grid-template-columns: 340px 110px 100px 1fr;
+}
+
 .board-row:not(.board-header) {
   border-top: 1px solid rgba(255, 214, 233, 0.08);
 }
@@ -372,6 +376,42 @@ input:focus {
 .board-row.selected .meta-col,
 .board-row.selected .venue-col {
   box-shadow: inset 0 0 0 1px rgba(255, 188, 220, 0.26);
+}
+
+.board-group {
+  border-top: 1px solid rgba(255, 214, 233, 0.08);
+}
+
+.group-row .sticky-left,
+.group-row .meta-col,
+.group-row .venue-col {
+  background:
+    linear-gradient(135deg, rgba(255, 220, 237, 0.12), rgba(255, 140, 194, 0.08)),
+    #45203f !important;
+}
+
+.group-row.expanded .sticky-left,
+.group-row.expanded .meta-col,
+.group-row.expanded .venue-col {
+  box-shadow: inset 0 0 0 1px rgba(255, 196, 225, 0.18);
+}
+
+.group-row .market-col strong {
+  font-size: 1.02rem;
+}
+
+.child-row .market-col {
+  padding-left: 28px;
+}
+
+.child-row .market-col strong::before {
+  content: "";
+  display: inline-block;
+  width: 10px;
+  height: 1px;
+  margin-right: 10px;
+  vertical-align: middle;
+  background: rgba(255, 214, 233, 0.38);
 }
 
 .board-row-button,

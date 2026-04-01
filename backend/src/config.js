@@ -54,6 +54,7 @@ module.exports = {
     cacheTtlMs: number("PREDICTION_MARKETS_CACHE_TTL_MS", 30000),
     marketLimit: number("PREDICTION_MARKETS_MARKET_LIMIT", 8),
     marketScanLimit: number("PREDICTION_MARKETS_SCAN_LIMIT", 200),
+    marketScanPages: number("PREDICTION_MARKETS_SCAN_PAGES", 4),
     kalshiBaseUrl: process.env.KALSHI_API_BASE_URL || "https://api.elections.kalshi.com/trade-api/v2",
     kalshiWebBaseUrl: process.env.KALSHI_WEB_BASE_URL || "https://kalshi.com",
     polymarketGammaBaseUrl:
