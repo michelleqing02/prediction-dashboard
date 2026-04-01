@@ -1,5 +1,6 @@
 const categorySelect = document.getElementById("categorySelect");
 const searchInput = document.getElementById("searchInput");
+const themeSelect = document.getElementById("themeSelect");
 const updatedAtEl = document.getElementById("updatedAt");
 const sourceModeEl = document.getElementById("sourceMode");
 const errorBannerEl = document.getElementById("errorBanner");
@@ -22,6 +23,25 @@ const VENUES = [
   { key: "polymarket", label: "Polymarket" },
 ];
 
+const SPORT_ORDER = ["College Basketball", "NBA", "NHL"];
+const SPORT_LABELS = {
+  "College Basketball": "NCAAB",
+  NBA: "NBA",
+  NHL: "NHL",
+};
+
+const GAME_MARKET_TYPES = [
+  "moneyline",
+  "spreads",
+  "totals",
+  "first half moneyline",
+  "first half spreads",
+  "first half totals",
+  "points",
+  "rebounds",
+  "assists",
+];
+
 const state = {
   dashboard: null,
   selectedSport: "",
@@ -29,6 +49,7 @@ const state = {
   selectedVenueKey: "polymarket",
   selectedMarketId: "",
   expandedGroupIds: [],
+  theme: window.localStorage.getItem("prediction-market-theme") || "black",
 };
 
 categorySelect.addEventListener("change", () => {
@@ -40,6 +61,11 @@ let searchTimer = null;
 searchInput.addEventListener("input", () => {
   window.clearTimeout(searchTimer);
   searchTimer = window.setTimeout(loadDashboard, 250);
+});
+
+themeSelect.addEventListener("change", () => {
+  state.theme = themeSelect.value || "black";
+  applyTheme();
 });
 
 function formatPercent(value) {
@@ -74,6 +100,18 @@ function formatCompactNumber(value) {
   }).format(Number(value || 0));
 }
 
+function formatDateTimeShort(value) {
+  if (!value) return "--";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "--";
+  return date.toLocaleString("en-US", {
+    month: "numeric",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
 function toneClass(value) {
   if (value > 0) return "positive";
   if (value < 0) return "negative";
@@ -97,6 +135,14 @@ function currentVenue() {
   return VENUES.find((venue) => venue.key === state.selectedVenueKey) || VENUES[0];
 }
 
+function sportLabel(value) {
+  return SPORT_LABELS[value] || value || "All";
+}
+
+function isGameMarket(market) {
+  return GAME_MARKET_TYPES.includes(String(market.category || "").toLowerCase());
+}
+
 function venueMarketsFromDashboard(dashboard) {
   return (dashboard.markets || [])
     .filter((market) => market.platformKey === state.selectedVenueKey)
@@ -113,24 +159,15 @@ function venueMarketsFromDashboard(dashboard) {
     });
 }
 
-function isGameMarket(market) {
-  const category = String(market.category || "").toLowerCase();
-  return [
-    "moneyline",
-    "spreads",
-    "totals",
-    "first half moneyline",
-    "first half spreads",
-    "first half totals",
-    "points",
-    "rebounds",
-    "assists",
-  ].includes(category);
-}
-
 function selectedVenueMarket() {
   const markets = venueMarketsFromDashboard(state.dashboard || { markets: [] });
   return markets.find((market) => market.id === state.selectedMarketId) || markets[0] || null;
+}
+
+function applyTheme() {
+  document.body.dataset.theme = state.theme;
+  themeSelect.value = state.theme;
+  window.localStorage.setItem("prediction-market-theme", state.theme);
 }
 
 function groupTitleForMarket(market) {
@@ -138,7 +175,17 @@ function groupTitleForMarket(market) {
     return market.subtitle || market.category || market.title;
   }
 
-  return market.category || market.subtitle || market.title;
+  if (Array.isArray(market.components) && market.components.length > 1) {
+    return `${market.components[0].label} +${market.components.length - 1} legs`;
+  }
+
+  return market.title || market.category || market.subtitle;
+}
+
+function primaryTypeForGroup(group) {
+  const unique = [...new Set(group.markets.map((market) => market.category).filter(Boolean))];
+  const firstCategory = unique[0] || "General";
+  return unique.length > 1 ? `${firstCategory} +${unique.length - 1}` : firstCategory;
 }
 
 function buildMarketGroups(markets) {
@@ -201,7 +248,7 @@ function syncExpandedGroups(groups) {
   }
 
   if (!state.expandedGroupIds.length && groups.length) {
-    state.expandedGroupIds = groups.slice(0, 6).map((group) => group.id);
+    state.expandedGroupIds = groups.slice(0, 8).map((group) => group.id);
   }
 }
 
@@ -251,7 +298,7 @@ function setError(message) {
 
 function renderCategoryOptions(categories) {
   const current = state.selectedCategory;
-  categorySelect.innerHTML = '<option value="">All categories</option>';
+  categorySelect.innerHTML = '<option value="">All types</option>';
   for (const category of categories) {
     const option = document.createElement("option");
     option.value = category;
@@ -262,10 +309,19 @@ function renderCategoryOptions(categories) {
 }
 
 function renderSportTabs(sports) {
-  const tabs = ["", ...sports];
+  const orderedSports = [...sports].sort((a, b) => {
+    const aIndex = SPORT_ORDER.indexOf(a);
+    const bIndex = SPORT_ORDER.indexOf(b);
+    if (aIndex === -1 && bIndex === -1) return a.localeCompare(b);
+    if (aIndex === -1) return 1;
+    if (bIndex === -1) return -1;
+    return aIndex - bIndex;
+  });
+
+  const tabs = ["", ...orderedSports];
   sportTabsEl.innerHTML = tabs
     .map((sport) => {
-      const label = sport || "All";
+      const label = sportLabel(sport);
       const active = sport === state.selectedSport ? "active" : "";
       return `<button type="button" class="sport-tab ${active}" data-sport="${escapeHtml(sport)}">${escapeHtml(label)}</button>`;
     })
@@ -283,7 +339,7 @@ function renderVenueTabs(sourceStatus) {
   venueTabsEl.innerHTML = VENUES.map((venue) => {
     const active = venue.key === state.selectedVenueKey ? "active" : "";
     const mode = sourceStatus?.[venue.key]?.mode || "--";
-    return `<button type="button" class="sport-tab ${active}" data-venue="${escapeHtml(venue.key)}">${escapeHtml(venue.label)} | ${escapeHtml(mode)}</button>`;
+    return `<button type="button" class="sport-tab ${active}" data-venue="${escapeHtml(venue.key)}">${escapeHtml(venue.label)} <span class="tab-mode">${escapeHtml(mode)}</span></button>`;
   }).join("");
 
   for (const button of venueTabsEl.querySelectorAll(".sport-tab")) {
@@ -306,24 +362,20 @@ function renderDashboard() {
     ? new Date(dashboard.generatedAt).toLocaleTimeString()
     : "--";
   sourceModeEl.textContent = venueModeLabel(dashboard.sourceStatus);
-  boardTitleEl.textContent = `${venue.label} markets${state.selectedSport ? ` | ${state.selectedSport}` : ""}`;
+  boardTitleEl.textContent = `${venue.label} board${state.selectedSport ? ` | ${sportLabel(state.selectedSport)}` : ""}`;
 
   heroMetricsEl.innerHTML = [
     metricTile("Markets", venueMarkets.length),
-    metricTile("Groups", venueGroups.length),
+    metricTile("Boards", venueGroups.length),
     metricTile("Venue", venue.label),
-    metricTile("Source mode", venueStatus.mode || "--"),
+    metricTile("Mode", venueStatus.mode || "--"),
     metricTile(
-      "Reported liquidity",
+      "Liquidity",
       formatCurrency(venueMarkets.reduce((sum, market) => sum + Number(market.liquidityUsd || 0), 0))
     ),
     metricTile(
-      "24h traded volume",
+      "24h Vol",
       formatCurrency(venueMarkets.reduce((sum, market) => sum + Number(market.volume24hUsd || 0), 0))
-    ),
-    metricTile(
-      "Alerts",
-      venueMarkets.reduce((sum, market) => sum + Number(market.alerts?.length || 0), 0)
     ),
   ].join("");
 
@@ -362,8 +414,8 @@ function renderBoard(groups, venue, venueStatus) {
   const header = `
     <div class="board-row board-header single-venue">
       <div class="market-col sticky-left">Market</div>
-      <div class="meta-col">Sport</div>
-      <div class="meta-col">Alerts</div>
+      <div class="meta-col">Time</div>
+      <div class="meta-col">Type</div>
       <div class="venue-col">
         <div class="venue-head">${venue.label}</div>
         <div class="venue-subhead">YES | Bid/Ask | Spr | Liq | 24h Vol</div>
@@ -373,7 +425,7 @@ function renderBoard(groups, venue, venueStatus) {
 
   const body = groups.length
     ? groups.map((group) => renderGroupRow(group)).join("")
-    : `<div class="empty-card">No ${escapeHtml(venue.label)} markets matched the current filters${state.selectedSport ? ` for ${escapeHtml(state.selectedSport)}` : ""}${venueStatus.mode === "error" ? `. Source error: ${escapeHtml(venueStatus.error || "unknown")}` : ""}.</div>`;
+    : `<div class="empty-card">No ${escapeHtml(venue.label)} markets matched the current filters${state.selectedSport ? ` for ${escapeHtml(sportLabel(state.selectedSport))}` : ""}${venueStatus.mode === "error" ? `. Source error: ${escapeHtml(venueStatus.error || "unknown")}` : ""}.</div>`;
 
   traderBoardEl.innerHTML = header + body;
 
@@ -403,21 +455,29 @@ function renderBoard(groups, venue, venueStatus) {
 function renderGroupRow(group) {
   const expanded = state.expandedGroupIds.includes(group.id);
   const firstMarket = group.markets[0];
-  const categoryText = [
-    group.sport || "--",
-    `${group.markets.length} selection${group.markets.length === 1 ? "" : "s"}`,
-  ].join(" | ");
+  const selectionText = `${group.markets.length} selection${group.markets.length === 1 ? "" : "s"}`;
+  const typeText = primaryTypeForGroup(group);
+  const childMarkup =
+    expanded &&
+    group.platformKey === "kalshi" &&
+    group.markets.length === 1 &&
+    Array.isArray(firstMarket.components) &&
+    firstMarket.components.length > 1
+      ? firstMarket.components.map((component) => renderKalshiComponentRow(firstMarket, component)).join("")
+      : expanded
+        ? group.markets.map((market) => renderBoardRow(market)).join("")
+        : "";
 
   return `
     <div class="board-group">
       <div class="board-row single-venue group-row ${expanded ? "expanded" : ""}">
         <button type="button" class="group-row-button market-col sticky-left" data-group-id="${escapeHtml(group.id)}">
-          <strong>${expanded ? "▾" : "▸"} ${escapeHtml(group.title)}</strong>
-          <small>${escapeHtml(categoryText)}</small>
+          <strong>${expanded ? "v" : ">"} ${escapeHtml(group.title)}</strong>
+          <small>${escapeHtml(group.sport || "--")} | ${escapeHtml(selectionText)}</small>
           <small>${group.alertCount ? `${group.alertCount} alert${group.alertCount === 1 ? "" : "s"}` : "Click to expand"}</small>
         </button>
-        <div class="meta-col">${escapeHtml(group.sport || "--")}</div>
-        <div class="meta-col">${group.alertCount || "--"}</div>
+        <div class="meta-col">${escapeHtml(formatDateTimeShort(firstMarket?.expiresAt))}</div>
+        <div class="meta-col">${escapeHtml(typeText)}</div>
         <button type="button" class="group-row-button venue-col" data-group-id="${escapeHtml(group.id)}">
           <strong>${escapeHtml(formatCurrency(group.totalLiquidityUsd))}</strong>
           <span class="bidask">${escapeHtml(formatCompactNumber(group.markets.length))} selections</span>
@@ -425,29 +485,54 @@ function renderGroupRow(group) {
           <span class="metric-inline">Vol ${escapeHtml(formatCurrency(group.totalVolume24hUsd))}</span>
         </button>
       </div>
-      ${expanded ? group.markets.map((market) => renderBoardRow(market)).join("") : ""}
+      ${childMarkup}
     </div>
   `;
 }
 
 function renderBoardRow(market) {
   const selected = market.id === state.selectedMarketId ? "selected" : "";
-  const categoryText = market.category && market.sport ? `${market.category} | ${market.sport}` : market.category || market.sport || "--";
+  const subText = market.sport
+    ? `${market.sport} | ${market.subtitle || market.category || "--"}`
+    : market.subtitle || market.category || "--";
 
   return `
     <div class="board-row single-venue child-row ${selected}">
       <button type="button" class="board-row-button market-col sticky-left" data-market-id="${escapeHtml(market.id)}">
         <strong>${escapeHtml(market.title)}</strong>
-        <small>${escapeHtml(categoryText)}</small>
+        <small>${escapeHtml(subText)}</small>
         <small>${market.alerts?.length ? `${market.alerts.length} alert${market.alerts.length === 1 ? "" : "s"}` : "No alerts"}</small>
       </button>
-      <div class="meta-col">${escapeHtml(market.sport || "--")}</div>
-      <div class="meta-col">${market.alerts?.length || "--"}</div>
+      <div class="meta-col">${escapeHtml(formatDateTimeShort(market.expiresAt))}</div>
+      <div class="meta-col">${escapeHtml(market.category || "--")}</div>
       <button type="button" class="board-row-button venue-col ${selected ? "venue-selected" : ""}" data-market-id="${escapeHtml(market.id)}">
         <strong>${escapeHtml(formatPercent(market.yesPrice))}</strong>
         <span class="bidask">${escapeHtml(formatPercent(market.topBid?.price))} / ${escapeHtml(formatPercent(market.topAsk?.price))}</span>
         <span class="metric-inline">Spr ${escapeHtml(formatSpread(market.spread))}</span>
         <span class="metric-inline">Liq ${escapeHtml(formatCurrency(market.liquidityUsd))}</span>
+        <span class="metric-inline">Vol ${escapeHtml(formatCurrency(market.volume24hUsd))}</span>
+      </button>
+    </div>
+  `;
+}
+
+function renderKalshiComponentRow(market, component) {
+  const selected = market.id === state.selectedMarketId ? "selected" : "";
+  const sideLabel = String(component.side || "").toUpperCase();
+
+  return `
+    <div class="board-row single-venue child-row kalshi-leg-row ${selected}">
+      <button type="button" class="board-row-button market-col sticky-left" data-market-id="${escapeHtml(market.id)}">
+        <strong>${escapeHtml(component.label)}</strong>
+        <small>${escapeHtml(market.sport || "--")} | ${escapeHtml(market.category || "--")}</small>
+        <small>${escapeHtml(sideLabel)} leg | opens combo detail below</small>
+      </button>
+      <div class="meta-col">${escapeHtml(formatDateTimeShort(market.expiresAt))}</div>
+      <div class="meta-col">${escapeHtml(sideLabel || "LEG")}</div>
+      <button type="button" class="board-row-button venue-col ${selected ? "venue-selected" : ""}" data-market-id="${escapeHtml(market.id)}">
+        <strong>${escapeHtml(formatPercent(market.yesPrice))}</strong>
+        <span class="bidask">Combo market pricing</span>
+        <span class="metric-inline">${escapeHtml(component.marketTicker || "Leg ticker unavailable")}</span>
         <span class="metric-inline">Vol ${escapeHtml(formatCurrency(market.volume24hUsd))}</span>
       </button>
     </div>
@@ -544,8 +629,9 @@ function renderPockets(market) {
 }
 
 async function init() {
+  applyTheme();
   await loadDashboard();
-  window.setInterval(loadDashboard, 30000);
+  window.setInterval(loadDashboard, 5000);
 }
 
 init();

@@ -136,6 +136,28 @@ function kalshiCategoryLabel(market) {
   return marketTypeLabel(market.category || market.event_ticker || "General");
 }
 
+function splitKalshiSelections(value) {
+  return String(value || "")
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function buildKalshiComponents(market) {
+  const labels = splitKalshiSelections(market.yes_sub_title || market.title);
+  const legs = Array.isArray(market.mve_selected_legs) ? market.mve_selected_legs : [];
+
+  if (!labels.length && !legs.length) return [];
+
+  return labels.map((label, index) => ({
+    id: `${market.ticker}-leg-${index}`,
+    label,
+    side: legs[index]?.side || (/^no\s/i.test(label) ? "no" : "yes"),
+    marketTicker: legs[index]?.market_ticker || "",
+    eventTicker: legs[index]?.event_ticker || "",
+  }));
+}
+
 function keepLiveSportsMarkets(markets) {
   return markets
     .filter((market) => inferSport(market))
@@ -396,6 +418,7 @@ async function fetchKalshiMarkets() {
       const noPrice = clampProbability(1 - yesPrice);
       const impliedBidSize = toNumber(market.yes_bid_dollars) || toNumber(market.volume) || 0;
       const impliedAskSize = toNumber(market.yes_ask_dollars) || toNumber(market.liquidity) || 0;
+      const components = buildKalshiComponents(market);
       const sport = inferSport({
         title: market.title,
         subtitle: market.subtitle || market.series_ticker,
@@ -411,6 +434,7 @@ async function fetchKalshiMarkets() {
         subtitle: market.subtitle || market.series_ticker || "Kalshi market",
         category: kalshiCategoryLabel(market),
         sport,
+        components,
         url: `${config.predictionMarkets.kalshiWebBaseUrl.replace(/\/$/, "")}/market/${market.ticker}`,
         yesPrice,
         noPrice,

@@ -3,48 +3,64 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Prediction Market Comp Monitor</title>
+    <title>Prediction Market Trader Board</title>
     <link rel="stylesheet" href="/prediction-markets.css" />
   </head>
-  <body>
+  <body data-theme="black">
+    <header class="topbar">
+      <div class="brand-lockup">
+        <div class="brand-mark" aria-hidden="true"></div>
+        <div class="brand-text">PREDICTION BOARD</div>
+      </div>
+      <nav class="topnav">
+        <span>Dashboard</span>
+        <span>NBA</span>
+        <span>NCAAB</span>
+        <span>NHL</span>
+        <span>Kalshi</span>
+        <span>Polymarket</span>
+      </nav>
+    </header>
+
     <main class="page">
-      <section class="hero">
+      <section class="hero compact-hero">
         <div>
-          <p class="eyebrow">Prediction Market Comp Monitor</p>
-          <h1>Sports pricing board for Kalshi and Polymarket.</h1>
-          <p class="lede">
-            Structured for price management: markets down the left, venues across the row, and the
-            most actionable pricing fields in each cell.
-          </p>
+          <p class="eyebrow">Trader View</p>
+          <h1>Kalshi and Polymarket pricing board.</h1>
+          <p class="lede">Dense market view with expandable boards, fast scanning, and venue detail below.</p>
         </div>
         <div class="hero-metrics" id="heroMetrics"></div>
       </section>
 
-      <section class="sport-strip panel">
-        <div class="sport-tabs" id="sportTabs"></div>
-      </section>
+      <section class="toolbar panel">
+        <div class="sport-tabs toolbar-row" id="sportTabs"></div>
+        <div class="sport-tabs toolbar-row" id="venueTabs"></div>
+        <div class="controls controls-dense">
+          <label>
+            <span>Type</span>
+            <select id="categorySelect">
+              <option value="">All types</option>
+            </select>
+          </label>
 
-      <section class="sport-strip panel">
-        <div class="sport-tabs" id="venueTabs"></div>
-      </section>
+          <label>
+            <span>Search</span>
+            <input id="searchInput" placeholder="team, finals, spread..." />
+          </label>
 
-      <section class="controls">
-        <label>
-          <span>Category</span>
-          <select id="categorySelect">
-            <option value="">All categories</option>
-          </select>
-        </label>
+          <label>
+            <span>Theme</span>
+            <select id="themeSelect">
+              <option value="black">Black</option>
+              <option value="pink">Pink</option>
+            </select>
+          </label>
 
-        <label>
-          <span>Search</span>
-          <input id="searchInput" placeholder="team, futures, finals..." />
-        </label>
-
-        <div class="stamp">
-          <span>Updated</span>
-          <strong id="updatedAt">--</strong>
-          <small id="sourceMode">--</small>
+          <div class="stamp">
+            <span>Updated</span>
+            <strong id="updatedAt">--</strong>
+            <small id="sourceMode">--</small>
+          </div>
         </div>
       </section>
 
@@ -65,8 +81,8 @@
       <section class="board-shell panel">
         <div class="panel-head board-headline">
           <div>
-            <p class="eyebrow">Venue Markets</p>
-            <h2 id="boardTitle">All markets for selected venue and sport</h2>
+            <p class="eyebrow">Board</p>
+            <h2 id="boardTitle">Venue board</h2>
           </div>
         </div>
         <div class="board-scroll">
@@ -110,4 +126,4 @@
 
     <script src="/prediction-markets.js"></script>
   </body>
-  </html>
+</html>
