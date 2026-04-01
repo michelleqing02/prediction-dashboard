@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>WNBA Odds Board</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <main class="page">
+      <section class="hero">
+        <p class="eyebrow">WNBA Market Aggregator</p>
+        <h1>Multi-book WNBA odds board on your local backend.</h1>
+        <p class="lede">
+          Compare books side by side, filter markets, and highlight the best available price without
+          leaving your own local dashboard.
+        </p>
+        <p class="lede">
+          Direct dashboards:
+          <a href="/prediction-markets">Prediction market comps</a>,
+          <a href="/wcbb-performance">WCBB match performance</a>
+          and
+          <a href="/wcbb-futures">WCBB futures</a>.
+        </p>
+      </section>
+
+      <section class="controls">
+        <label>
+          <span>Game</span>
+          <select id="gameSelect"></select>
+        </label>
+
+        <label>
+          <span>Sportsbook</span>
+          <select id="bookSelect">
+            <option value="">All books</option>
+          </select>
+        </label>
+
+        <label>
+          <span>Market</span>
+          <select id="marketSelect">
+            <option value="">All markets</option>
+            <option value="moneyline">Moneyline</option>
+            <option value="spread">Spread</option>
+            <option value="total">Totals</option>
+            <option value="player_prop">Player props</option>
+            <option value="outright">Outrights</option>
+          </select>
+        </label>
+
+        <div class="stamp">
+          <span>Updated</span>
+          <strong id="updatedAt">--</strong>
+        </div>
+      </section>
+
+      <section id="gamesGrid" class="games-grid"></section>
+      <section id="markets" class="markets"></section>
+    </main>
+
+    <script src="/app.js"></script>
+  </body>
+</html>

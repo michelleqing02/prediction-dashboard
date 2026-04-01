@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>WCBB Match Performance</title>
+    <link rel="stylesheet" href="/wcbb-performance.css" />
+  </head>
+  <body>
+    <main class="page">
+      <section class="hero">
+        <div>
+          <p class="eyebrow">Databricks Match Dashboard</p>
+          <h1>Women's College Basketball Performance</h1>
+          <p class="lede">
+            Fast season board for games placed from February 1, 2026 onward, focused on handle, GGR,
+            margin, and over-under performance with live and stake factor filtering.
+          </p>
+        </div>
+        <div class="hero-actions">
+          <a class="home-link" href="/">Back to Home</a>
+          <span class="hero-badge" id="statusBadge">Loading dashboard</span>
+        </div>
+      </section>
+
+      <section class="controls-panel">
+        <label class="control control-wide">
+          <span>Search Game</span>
+          <input id="searchInput" type="search" placeholder="Search matchup or team" />
+        </label>
+        <label class="control">
+          <span>Live Betting</span>
+          <select id="liveFilter"></select>
+        </label>
+        <label class="control">
+          <span>Stake Factor</span>
+          <select id="stakeFilter"></select>
+        </label>
+        <label class="control">
+          <span>Sort</span>
+          <select id="sortSelect">
+            <option value="ggr_asc">Worst GGR</option>
+            <option value="ggr_desc">Best GGR</option>
+            <option value="margin_asc">Worst Margin</option>
+            <option value="margin_desc">Best Margin</option>
+            <option value="handle_desc">Highest Handle</option>
+            <option value="event_date_desc">Most Recent Games</option>
+          </select>
+        </label>
+      </section>
+
+      <section class="summary-grid" id="summaryGrid"></section>
+
+      <section class="spotlight-grid" id="spotlightGrid"></section>
+
+      <section class="notes-panel">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">Context</p>
+            <h2>How To Read The Board</h2>
+          </div>
+          <div class="meta-pills" id="metaPills"></div>
+        </div>
+        <ul id="notesList"></ul>
+      </section>
+
+      <section class="results-panel">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">Game Board</p>
+            <h2 id="resultsTitle">Loading games</h2>
+          </div>
+        </div>
+        <div id="events" class="event-list"></div>
+      </section>
+    </main>
+
+    <script src="/wcbb-performance.js"></script>
+  </body>
+  </html>

@@ -1,0 +1,12 @@
+{
+  "name": "wnba-odds-aggregator",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Production-oriented WNBA odds aggregation scaffold",
+  "scripts": {
+    "backend": "npm --prefix backend run dev",
+    "frontend": "npm --prefix frontend run dev",
+    "backend:start": "npm --prefix backend run start",
+    "frontend:build": "npm --prefix frontend run build"
+  }
+}

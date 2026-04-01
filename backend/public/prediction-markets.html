@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Prediction Market Comp Monitor</title>
+    <link rel="stylesheet" href="/prediction-markets.css" />
+  </head>
+  <body>
+    <main class="page">
+      <section class="hero">
+        <div>
+          <p class="eyebrow">Prediction Market Comp Monitor</p>
+          <h1>Sports pricing board for Kalshi and Polymarket.</h1>
+          <p class="lede">
+            Structured for price management: markets down the left, venues across the row, and the
+            most actionable pricing fields in each cell.
+          </p>
+        </div>
+        <div class="hero-metrics" id="heroMetrics"></div>
+      </section>
+
+      <section class="sport-strip panel">
+        <div class="sport-tabs" id="sportTabs"></div>
+      </section>
+
+      <section class="controls">
+        <label>
+          <span>Category</span>
+          <select id="categorySelect">
+            <option value="">All categories</option>
+          </select>
+        </label>
+
+        <label>
+          <span>Search</span>
+          <input id="searchInput" placeholder="team, futures, finals..." />
+        </label>
+
+        <div class="stamp">
+          <span>Updated</span>
+          <strong id="updatedAt">--</strong>
+          <small id="sourceMode">--</small>
+        </div>
+      </section>
+
+      <section id="errorBanner" class="error-banner hidden"></section>
+
+      <section class="summary-strip">
+        <article class="panel summary-panel">
+          <div class="panel-head compact">
+            <div>
+              <p class="eyebrow">Alert Tape</p>
+            </div>
+            <span class="pill" id="alertCount">0</span>
+          </div>
+          <div id="alerts" class="alert-list inline"></div>
+        </article>
+      </section>
+
+      <section class="board-shell panel">
+        <div class="board-scroll">
+          <div class="trader-board" id="traderBoard"></div>
+        </div>
+      </section>
+
+      <section class="detail-grid">
+        <article class="panel">
+          <div class="panel-head">
+            <div>
+              <p class="eyebrow">Selected Market</p>
+              <h2 id="detailTitle">Pick a market</h2>
+            </div>
+            <a id="openVenueLink" class="link-button hidden" href="/" target="_blank" rel="noreferrer">Open venue</a>
+          </div>
+          <p class="detail-subtitle" id="detailSubtitle">Choose a market row to inspect venue detail.</p>
+          <div id="signals" class="signal-grid"></div>
+        </article>
+
+        <article class="panel">
+          <div class="panel-head">
+            <div>
+              <p class="eyebrow">Depth Snapshot</p>
+              <h2>Selected venue orderbook</h2>
+            </div>
+          </div>
+          <div class="depth-table">
+            <div class="depth-head">
+              <span>Bid px</span>
+              <span>Bid size</span>
+              <span>Ask px</span>
+              <span>Ask size</span>
+            </div>
+            <div id="depthRows"></div>
+          </div>
+          <div id="pockets" class="pocket-list"></div>
+        </article>
+      </section>
+    </main>
+
+    <script src="/prediction-markets.js"></script>
+  </body>
+  </html>

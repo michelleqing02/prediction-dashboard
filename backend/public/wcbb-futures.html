@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>WCBB Futures Dashboard</title>
+    <link rel="stylesheet" href="/wcbb-futures.css" />
+  </head>
+  <body>
+    <main class="page">
+      <section class="hero">
+        <div class="hero-copy">
+          <p class="eyebrow">Databricks Season Dashboard</p>
+          <h1>Women's College Basketball Futures</h1>
+          <p class="lede">
+            Season-to-date market board for handle, potential payout, liability, tickets, P&amp;L, and
+            state detail from November 3, 2025 through April 5, 2026.
+          </p>
+        </div>
+        <div class="hero-actions">
+          <a class="home-link" href="/">Back to Home</a>
+          <span class="hero-badge" id="availabilityBadge">Loading season data</span>
+        </div>
+      </section>
+
+      <section class="meta-grid" id="summaryCards"></section>
+
+      <section class="notes-panel">
+        <div class="notes-header">
+          <div>
+            <p class="eyebrow">Context</p>
+            <h2>How To Read This Board</h2>
+          </div>
+          <div class="notes-meta" id="dataWindow"></div>
+        </div>
+        <ul id="notesList"></ul>
+      </section>
+
+      <section class="controls-panel">
+        <label class="control">
+          <span>Search</span>
+          <input id="searchInput" type="search" placeholder="Search market, event, or competition" />
+        </label>
+        <label class="control">
+          <span>Competition</span>
+          <select id="competitionFilter"></select>
+        </label>
+        <label class="control">
+          <span>Sort</span>
+          <select id="sortSelect">
+            <option value="handle_desc">Handle</option>
+            <option value="liability_desc">Potential Liability</option>
+            <option value="payout_desc">Potential Payout</option>
+            <option value="ggr_desc">Sportsbook P&amp;L</option>
+            <option value="tickets_desc">Tickets</option>
+            <option value="recent_desc">Most Recent Activity</option>
+          </select>
+        </label>
+      </section>
+
+      <section class="results-panel">
+        <div class="results-header">
+          <div>
+            <p class="eyebrow">Season Markets</p>
+            <h2 id="resultsTitle">Loading markets</h2>
+          </div>
+        </div>
+        <div id="markets" class="markets"></div>
+      </section>
+    </main>
+
+    <script src="/wcbb-futures.js"></script>
+  </body>
+</html>
