@@ -480,30 +480,46 @@ async function fetchPolymarketFeaturedGameEvent(baseUrl, configEntry) {
       return [];
     }
 
-    return outcomes.map((selectionLabel, index) => ({
-      id: `polymarket-${market.slug || market.id}-featured-${index}`,
-      platform: "Polymarket",
-      platformKey: "polymarket",
-      title: market.question || event.title || market.slug,
-      subtitle: configEntry.label,
-      category: "Game Winner",
-      sport: configEntry.sport,
-      selectionLabel,
-      selectionKey: normalizeSelectionKey(selectionLabel),
-      compareGroupType: "game-winner",
-      compareParentLabel: configEntry.label,
-      compareGroupKey: configEntry.key,
-      compareGroupLabel: configEntry.label,
-      url: configEntry.polymarketUrl,
-      yesPrice: clampProbability(toNumber(outcomePrices[index])),
-      noPrice: clampProbability(1 - toNumber(outcomePrices[index])),
-      lastPrice: clampProbability(toNumber(outcomePrices[index])),
-      liquidityUsd: toNumber(market.liquidityClob) || toNumber(event.liquidity),
-      volume24hUsd: toNumber(market.volume24hrClob) || toNumber(event.volume24hr),
-      openInterestUsd: toNumber(event.openInterest) || toNumber(market.volumeNum),
-      expiresAt: market.gameStartTime || event.startDate || event.endDate || null,
-      yesBook: { bids: [], asks: [] },
-    }));
+    const marketBestBid = clampProbability(toNumber(market.bestBid));
+    const marketBestAsk = clampProbability(toNumber(market.bestAsk));
+
+    return outcomes.map((selectionLabel, index) => {
+      const isPrimaryOutcome = index === 0;
+      const bestBid = isPrimaryOutcome
+        ? marketBestBid
+        : clampProbability(marketBestAsk ? 1 - marketBestAsk : 0);
+      const bestAsk = isPrimaryOutcome
+        ? marketBestAsk
+        : clampProbability(marketBestBid ? 1 - marketBestBid : 0);
+
+      return {
+        id: `polymarket-${market.slug || market.id}-featured-${index}`,
+        platform: "Polymarket",
+        platformKey: "polymarket",
+        title: market.question || event.title || market.slug,
+        subtitle: configEntry.label,
+        category: "Game Winner",
+        sport: configEntry.sport,
+        selectionLabel,
+        selectionKey: normalizeSelectionKey(selectionLabel),
+        compareGroupType: "game-winner",
+        compareParentLabel: configEntry.label,
+        compareGroupKey: configEntry.key,
+        compareGroupLabel: configEntry.label,
+        url: configEntry.polymarketUrl,
+        yesPrice: clampProbability(toNumber(outcomePrices[index])),
+        noPrice: clampProbability(1 - toNumber(outcomePrices[index])),
+        lastPrice: clampProbability(toNumber(outcomePrices[index])),
+        liquidityUsd: toNumber(market.liquidityClob) || toNumber(event.liquidity),
+        volume24hUsd: toNumber(market.volume24hrClob) || toNumber(event.volume24hr),
+        openInterestUsd: toNumber(event.openInterest) || toNumber(market.volumeNum),
+        expiresAt: market.gameStartTime || event.startDate || event.endDate || null,
+        yesBook: {
+          bids: bestBid ? [{ price: bestBid, size: 0 }] : [],
+          asks: bestAsk ? [{ price: bestAsk, size: 0 }] : [],
+        },
+      };
+    });
   });
 }
 

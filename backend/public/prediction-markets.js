@@ -669,35 +669,120 @@ function renderChampionshipCompareBoard(groups) {
   }
 }
 
-function renderVenueCell(market, venueKey) {
+function hasCompleteQuote(market) {
+  return Number.isFinite(market?.topBid?.price) && Number.isFinite(market?.topAsk?.price);
+}
+
+function compareVenueSignals(row) {
+  const signals = {
+    kalshi: [],
+    polymarket: [],
+  };
+
+  const kalshiAsk = row?.kalshi?.topAsk?.price;
+  const polymarketAsk = row?.polymarket?.topAsk?.price;
+  if (Number.isFinite(kalshiAsk) && Number.isFinite(polymarketAsk)) {
+    if (kalshiAsk + 0.0001 < polymarketAsk) signals.kalshi.push("best-price");
+    if (polymarketAsk + 0.0001 < kalshiAsk) signals.polymarket.push("best-price");
+  }
+
+  for (const [key, market] of Object.entries({ kalshi: row?.kalshi, polymarket: row?.polymarket })) {
+    if (!market) continue;
+    if (!hasCompleteQuote(market)) signals[key].push("incomplete");
+    if (Number(market.spread || 0) >= 0.03) signals[key].push("wide-spread");
+    if (Math.abs(Number(market.priceChange1h || 0)) >= 0.03) signals[key].push("recent-move");
+  }
+
+  return signals;
+}
+
+function renderVenueCell(market, venueKey, flags = []) {
   if (!market) {
     return `<div class="venue-col venue-empty"><span class="metric-inline">No live row</span></div>`;
   }
 
   const selected = market.id === state.selectedMarketId ? "venue-selected" : "";
   const depthLabel = venueKey === "kalshi" ? "Depth" : "Liq";
+  const cellClasses = [selected, ...flags.map((flag) => `venue-${flag}`)].filter(Boolean).join(" ");
+  const flagLabels = [];
+
+  if (flags.includes("best-price")) flagLabels.push("Best price");
+  if (flags.includes("wide-spread")) flagLabels.push("Wide");
+  if (flags.includes("recent-move")) flagLabels.push("Moving");
+  if (flags.includes("incomplete")) flagLabels.push("Partial");
+
+  const flagMarkup = flagLabels.length
+    ? `<span class="metric-inline venue-flags">${escapeHtml(flagLabels.join(" • "))}</span>`
+    : "";
 
   return `
-    <button type="button" class="board-row-button venue-col ${selected}" data-market-id="${escapeHtml(market.id)}">
+    <button type="button" class="board-row-button venue-col ${cellClasses}" data-market-id="${escapeHtml(market.id)}">
       <strong>${escapeHtml(formatPercent(market.yesPrice))}</strong>
       <span class="bidask">${escapeHtml(formatPercent(market.topBid?.price))} / ${escapeHtml(formatPercent(market.topAsk?.price))}</span>
       <span class="metric-inline">Spr ${escapeHtml(formatSpread(market.spread))}</span>
       <span class="metric-inline">${escapeHtml(depthLabel)} ${escapeHtml(formatCurrency(liquidityValueForMarket(market)))}</span>
       <span class="metric-inline">1h ${escapeHtml(formatDelta(market.priceChange1h || 0))}</span>
+      ${flagMarkup}
     </button>
   `;
 }
 
+function noAskPrice(market) {
+  if (!market?.topBid?.price && market?.topBid?.price !== 0) return null;
+  return Math.max(0, 1 - Number(market.topBid.price));
+}
+
+function compareArbitrage(row) {
+  if (!row?.kalshi || !row?.polymarket) return null;
+
+  const kalshiYesAsk = row.kalshi?.topAsk?.price;
+  const polymarketYesAsk = row.polymarket?.topAsk?.price;
+  const kalshiNoAsk = noAskPrice(row.kalshi);
+  const polymarketNoAsk = noAskPrice(row.polymarket);
+
+  const routes = [
+    {
+      key: "buy-yes-kalshi-no-poly",
+      cost: Number.isFinite(kalshiYesAsk) && Number.isFinite(polymarketNoAsk)
+        ? Number(kalshiYesAsk) + Number(polymarketNoAsk)
+        : null,
+    },
+    {
+      key: "buy-yes-poly-no-kalshi",
+      cost: Number.isFinite(polymarketYesAsk) && Number.isFinite(kalshiNoAsk)
+        ? Number(polymarketYesAsk) + Number(kalshiNoAsk)
+        : null,
+    },
+  ].filter((route) => route.cost != null);
+
+  if (!routes.length) return null;
+
+  const bestRoute = routes.reduce((best, route) => (route.cost < best.cost ? route : best), routes[0]);
+  if (bestRoute.cost >= 0.999) return null;
+
+  return {
+    edge: 1 - bestRoute.cost,
+    route: bestRoute.key,
+  };
+}
+
 function renderCompareRow(row, groupLabel) {
+  const arbitrage = compareArbitrage(row);
+  const arbitrageClass = arbitrage ? "arb-row" : "";
+  const arbitrageLabel = arbitrage
+    ? `<small class="arb-flag">Arb ${(arbitrage.edge * 100).toFixed(1)}c</small>`
+    : `<small>${escapeHtml(groupLabel)}</small>`;
+  const venueSignals = compareVenueSignals(row);
+
   return `
-    <div class="board-row compare-board child-row">
+    <div class="board-row compare-board child-row ${arbitrageClass}">
       <div class="market-col sticky-left compare-selection-cell">
         <strong>${escapeHtml(row.selection)}</strong>
-        <small>${escapeHtml(groupLabel)}</small>
+        ${arbitrageLabel}
       </div>
       <div class="meta-col">${escapeHtml(formatDateTimeShort(row.expiresAt))}</div>
-      ${renderVenueCell(row.kalshi, "kalshi")}
-      ${renderVenueCell(row.polymarket, "polymarket")}
+      ${renderVenueCell(row.kalshi, "kalshi", venueSignals.kalshi)}
+      ${renderVenueCell(row.polymarket, "polymarket", venueSignals.polymarket)}
     </div>
   `;
 }
@@ -802,10 +887,20 @@ function renderDetail(market) {
     return;
   }
 
-  detailTitleEl.textContent = market.title;
+  const detailTitle =
+    market.selectionLabel ||
+    market.compareParentLabel ||
+    market.subtitle ||
+    market.title;
+  const parentLabel =
+    market.compareParentLabel ||
+    market.subtitle ||
+    market.title;
+
+  detailTitleEl.textContent = detailTitle;
   detailSubtitleEl.textContent = market.sport
-    ? `${market.platform} | ${market.category} | ${market.sport} | ${market.subtitle}`
-    : `${market.platform} | ${market.category} | ${market.subtitle}`;
+    ? `${market.platform} | ${market.category} | ${market.sport} | ${parentLabel}`
+    : `${market.platform} | ${market.category} | ${parentLabel}`;
 
   if (market.url) {
     openVenueLinkEl.href = market.url;
