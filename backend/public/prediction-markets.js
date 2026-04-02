@@ -268,10 +268,11 @@ function buildCompareGroups(dashboard) {
   const collegeBasketballMarkets = (dashboard?.markets || []).filter(
     (market) => market.sport === "College Basketball" && market.selectionKey
   );
-  const venueGroups = new Map();
+  const compareGroups = new Map();
 
   for (const market of collegeBasketballMarkets) {
-    const parentLabel = String(
+    const type = market.compareGroupType || market.category || "general";
+    const label = String(
       market.compareParentLabel ||
       market.compareGroupLabel ||
       market.subtitle ||
@@ -279,54 +280,40 @@ function buildCompareGroups(dashboard) {
       market.title ||
       "Comparable Market"
     ).trim();
-    const venueGroupKey = `${market.platformKey}|${market.compareGroupType || market.category || "general"}|${parentLabel}`;
+    const groupId = String(market.compareGroupKey || `${type}|${label}`).trim();
 
-    if (!venueGroups.has(venueGroupKey)) {
-      venueGroups.set(venueGroupKey, {
-        platformKey: market.platformKey,
-        type: market.compareGroupType || market.category || "general",
-        label: parentLabel,
-        marketsBySelection: new Map(),
-      });
-    }
-
-    venueGroups.get(venueGroupKey).marketsBySelection.set(market.selectionKey, market);
-  }
-
-  const compareGroups = new Map();
-
-  for (const venueGroup of venueGroups.values()) {
-    const signature = `${venueGroup.type}|${[...venueGroup.marketsBySelection.keys()].sort().join("|")}`;
-    if (!compareGroups.has(signature)) {
-      compareGroups.set(signature, {
-        id: signature,
-        label: venueGroup.label,
-        type: venueGroup.type,
+    if (!compareGroups.has(groupId)) {
+      compareGroups.set(groupId, {
+        id: groupId,
+        label,
+        type,
         rows: new Map(),
       });
     }
 
-    const compareGroup = compareGroups.get(signature);
-    if (venueGroup.platformKey === "kalshi") {
-      compareGroup.label = venueGroup.label || compareGroup.label;
+    const compareGroup = compareGroups.get(groupId);
+    if (market.platformKey === "kalshi") {
+      compareGroup.label = label || compareGroup.label;
     }
 
-    for (const [selectionKey, market] of venueGroup.marketsBySelection.entries()) {
-      if (!compareGroup.rows.has(selectionKey)) {
-        compareGroup.rows.set(selectionKey, {
-          selection: market.selectionLabel || market.title || selectionKey,
-          expiresAt: market.expiresAt || null,
-          kalshi: null,
-          polymarket: null,
-        });
-      }
-
-      const row = compareGroup.rows.get(selectionKey);
-      if (market.platformKey === "kalshi") row.kalshi = market;
-      if (market.platformKey === "polymarket") row.polymarket = market;
-      row.selection = row.selection || market.selectionLabel || market.title || selectionKey;
-      row.expiresAt = row.expiresAt || market.expiresAt || null;
+    if (!compareGroup.rows.has(market.selectionKey)) {
+      compareGroup.rows.set(market.selectionKey, {
+        selection: market.selectionLabel || market.title || market.selectionKey,
+        expiresAt: market.expiresAt || null,
+        kalshi: null,
+        polymarket: null,
+      });
     }
+
+    const row = compareGroup.rows.get(market.selectionKey);
+    if (market.platformKey === "kalshi") {
+      row.kalshi = market;
+    }
+    if (market.platformKey === "polymarket") {
+      row.polymarket = market;
+    }
+    row.selection = row.selection || market.selectionLabel || market.title || market.selectionKey;
+    row.expiresAt = row.expiresAt || market.expiresAt || null;
   }
 
   return [...compareGroups.values()]
