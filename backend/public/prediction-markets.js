@@ -15,6 +15,8 @@ const detailTitleEl = document.getElementById("detailTitle");
 const detailSubtitleEl = document.getElementById("detailSubtitle");
 const openVenueLinkEl = document.getElementById("openVenueLink");
 const signalsEl = document.getElementById("signals");
+const quoteBreakdownEl = document.getElementById("quoteBreakdown");
+const marketFactsEl = document.getElementById("marketFacts");
 const depthRowsEl = document.getElementById("depthRows");
 const pocketsEl = document.getElementById("pockets");
 
@@ -49,6 +51,7 @@ const state = {
   selectedVenueKey: "polymarket",
   selectedMarketId: "",
   expandedGroupIds: [],
+  hasSeededExpandedGroups: false,
   theme: window.localStorage.getItem("prediction-market-theme") || "black",
 };
 
@@ -90,6 +93,13 @@ function formatCurrency(value) {
     currency: "USD",
     notation: "compact",
     maximumFractionDigits: 1,
+  }).format(Number(value || 0));
+}
+
+function formatRawNumber(value) {
+  if (value == null || value === "") return "--";
+  return new Intl.NumberFormat("en-US", {
+    maximumFractionDigits: 2,
   }).format(Number(value || 0));
 }
 
@@ -155,12 +165,25 @@ function venueMarketsFromDashboard(dashboard) {
       const bTime = b.expiresAt ? new Date(b.expiresAt).getTime() : Number.MAX_SAFE_INTEGER;
       if (aTime !== bTime) return aTime - bTime;
 
-      return Number(b.liquidityUsd || 0) - Number(a.liquidityUsd || 0);
+      return Number(b.displayLiquidityUsd || b.liquidityUsd || 0) - Number(a.displayLiquidityUsd || a.liquidityUsd || 0);
     });
+}
+
+function liquidityLabelForMarket(market) {
+  return market?.liquidityLabel || "Reported liquidity";
+}
+
+function liquidityValueForMarket(market) {
+  return Number(market?.displayLiquidityUsd || market?.liquidityUsd || 0);
 }
 
 function selectedVenueMarket() {
   const markets = venueMarketsFromDashboard(state.dashboard || { markets: [] });
+  return markets.find((market) => market.id === state.selectedMarketId) || markets[0] || null;
+}
+
+function selectedMarketFromDashboard(dashboard) {
+  const markets = dashboard?.markets || [];
   return markets.find((market) => market.id === state.selectedMarketId) || markets[0] || null;
 }
 
@@ -172,6 +195,10 @@ function applyTheme() {
 
 function groupTitleForMarket(market) {
   if (market.platformKey === "polymarket") {
+    return market.subtitle || market.category || market.title;
+  }
+
+  if (market.platformKey === "kalshi") {
     return market.subtitle || market.category || market.title;
   }
 
@@ -216,10 +243,10 @@ function buildMarketGroups(markets) {
         const aTime = a.expiresAt ? new Date(a.expiresAt).getTime() : Number.MAX_SAFE_INTEGER;
         const bTime = b.expiresAt ? new Date(b.expiresAt).getTime() : Number.MAX_SAFE_INTEGER;
         if (aTime !== bTime) return aTime - bTime;
-        return Number(b.liquidityUsd || 0) - Number(a.liquidityUsd || 0);
+        return Number(b.displayLiquidityUsd || b.liquidityUsd || 0) - Number(a.displayLiquidityUsd || a.liquidityUsd || 0);
       });
 
-      group.totalLiquidityUsd = group.markets.reduce((sum, market) => sum + Number(market.liquidityUsd || 0), 0);
+      group.totalLiquidityUsd = group.markets.reduce((sum, market) => sum + liquidityValueForMarket(market), 0);
       group.totalVolume24hUsd = group.markets.reduce((sum, market) => sum + Number(market.volume24hUsd || 0), 0);
       group.alertCount = group.markets.reduce((sum, market) => sum + Number(market.alerts?.length || 0), 0);
       group.hasGameMarkets = group.markets.some(isGameMarket);
@@ -236,6 +263,38 @@ function buildMarketGroups(markets) {
     });
 }
 
+function buildChampionshipCompareRows(dashboard) {
+  const featuredMarkets = (dashboard?.markets || []).filter((market) =>
+    String(market.category || "").toLowerCase() === "women's college basketball championship"
+  );
+
+  const rows = new Map();
+
+  for (const market of featuredMarkets) {
+    const key = String(market.selectionLabel || market.title || "").trim();
+    if (!key) continue;
+    if (!rows.has(key)) {
+      rows.set(key, {
+        selection: key,
+        expiresAt: market.expiresAt || null,
+        kalshi: null,
+        polymarket: null,
+      });
+    }
+
+    const row = rows.get(key);
+    if (market.platformKey === "kalshi") row.kalshi = market;
+    if (market.platformKey === "polymarket") row.polymarket = market;
+    row.expiresAt = row.expiresAt || market.expiresAt || null;
+  }
+
+  return [...rows.values()].sort((a, b) => {
+    const aScore = Math.max(Number(a.kalshi?.yesPrice || 0), Number(a.polymarket?.yesPrice || 0));
+    const bScore = Math.max(Number(b.kalshi?.yesPrice || 0), Number(b.polymarket?.yesPrice || 0));
+    return bScore - aScore;
+  });
+}
+
 function syncExpandedGroups(groups) {
   const validIds = new Set(groups.map((group) => group.id));
   state.expandedGroupIds = state.expandedGroupIds.filter((id) => validIds.has(id));
@@ -247,15 +306,17 @@ function syncExpandedGroups(groups) {
     }
   }
 
-  if (!state.expandedGroupIds.length && groups.length) {
+  if (!state.hasSeededExpandedGroups && !state.expandedGroupIds.length && groups.length) {
     state.expandedGroupIds = groups.slice(0, 8).map((group) => group.id);
+    state.hasSeededExpandedGroups = true;
   }
 }
 
 async function loadDashboard() {
   try {
     const params = new URLSearchParams();
-    if (state.selectedVenueKey) params.set("platform", state.selectedVenueKey);
+    const wantsChampionshipCompare = state.selectedSport === "College Basketball";
+    if (state.selectedVenueKey && !wantsChampionshipCompare) params.set("platform", state.selectedVenueKey);
     if (state.selectedCategory) params.set("category", state.selectedCategory);
     if (state.selectedSport) params.set("sport", state.selectedSport);
     if (searchInput.value.trim()) params.set("search", searchInput.value.trim());
@@ -356,33 +417,57 @@ function renderDashboard() {
   const venueStatus = dashboard.sourceStatus?.[venue.key] || {};
   const venueMarkets = venueMarketsFromDashboard(dashboard);
   const venueGroups = buildMarketGroups(venueMarkets);
-  const selectedMarket = selectedVenueMarket();
+  const compareRows = buildChampionshipCompareRows(dashboard);
+  const showCompareBoard = state.selectedSport === "College Basketball" && compareRows.length > 0;
+  const selectedMarket = showCompareBoard ? selectedMarketFromDashboard(dashboard) : selectedVenueMarket();
+  const compareKalshiMarkets = showCompareBoard ? compareRows.map((row) => row.kalshi).filter(Boolean) : [];
+  const comparePolymarketMarkets = showCompareBoard ? compareRows.map((row) => row.polymarket).filter(Boolean) : [];
 
   updatedAtEl.textContent = dashboard.generatedAt
     ? new Date(dashboard.generatedAt).toLocaleTimeString()
     : "--";
   sourceModeEl.textContent = venueModeLabel(dashboard.sourceStatus);
-  boardTitleEl.textContent = `${venue.label} board${state.selectedSport ? ` | ${sportLabel(state.selectedSport)}` : ""}`;
+  boardTitleEl.textContent = showCompareBoard
+    ? `Women's Championship Compare | ${sportLabel(state.selectedSport)}`
+    : `${venue.label} board${state.selectedSport ? ` | ${sportLabel(state.selectedSport)}` : ""}`;
+  venueTabsEl.classList.toggle("hidden", showCompareBoard);
 
-  heroMetricsEl.innerHTML = [
-    metricTile("Markets", venueMarkets.length),
-    metricTile("Boards", venueGroups.length),
-    metricTile("Venue", venue.label),
-    metricTile("Mode", venueStatus.mode || "--"),
-    metricTile(
-      "Liquidity",
-      formatCurrency(venueMarkets.reduce((sum, market) => sum + Number(market.liquidityUsd || 0), 0))
-    ),
-    metricTile(
-      "24h Vol",
-      formatCurrency(venueMarkets.reduce((sum, market) => sum + Number(market.volume24hUsd || 0), 0))
-    ),
-  ].join("");
+  heroMetricsEl.innerHTML = showCompareBoard
+    ? [
+        metricTile("Selections", compareRows.length),
+        metricTile("Kalshi", compareKalshiMarkets.length),
+        metricTile("Polymarket", comparePolymarketMarkets.length),
+        metricTile("Kalshi Depth", formatCurrency(compareKalshiMarkets.reduce((sum, market) => sum + liquidityValueForMarket(market), 0))),
+        metricTile("Poly Liq", formatCurrency(comparePolymarketMarkets.reduce((sum, market) => sum + liquidityValueForMarket(market), 0))),
+        metricTile("24h Vol", formatCurrency(
+          [...compareKalshiMarkets, ...comparePolymarketMarkets].reduce((sum, market) => sum + Number(market.volume24hUsd || 0), 0)
+        )),
+      ].join("")
+    : [
+        metricTile("Markets", venueMarkets.length),
+        metricTile("Boards", venueGroups.length),
+        metricTile("Venue", venue.label),
+        metricTile("Mode", venueStatus.mode || "--"),
+        metricTile(
+          venue.key === "kalshi" ? "Visible depth" : "Liquidity",
+          formatCurrency(venueMarkets.reduce((sum, market) => sum + liquidityValueForMarket(market), 0))
+        ),
+        metricTile(
+          "24h Vol",
+          formatCurrency(venueMarkets.reduce((sum, market) => sum + Number(market.volume24hUsd || 0), 0))
+        ),
+      ].join("");
 
   renderAlerts(
-    (dashboard.alerts || []).filter((alert) => alert.platform.toLowerCase() === venue.label.toLowerCase())
+    showCompareBoard
+      ? (dashboard.alerts || []).filter((alert) => ["kalshi", "polymarket"].includes(String(alert.platform || "").toLowerCase()))
+      : (dashboard.alerts || []).filter((alert) => alert.platform.toLowerCase() === venue.label.toLowerCase())
   );
-  renderBoard(venueGroups, venue, venueStatus);
+  if (showCompareBoard) {
+    renderChampionshipCompareBoard(compareRows);
+  } else {
+    renderBoard(venueGroups, venue, venueStatus);
+  }
   renderDetail(selectedMarket);
 }
 
@@ -433,9 +518,13 @@ function renderBoard(groups, venue, venueStatus) {
     button.addEventListener("click", () => {
       const groupId = button.dataset.groupId;
       if (!groupId) return;
+      const group = groups.find((item) => item.id === groupId);
 
       if (state.expandedGroupIds.includes(groupId)) {
         state.expandedGroupIds = state.expandedGroupIds.filter((id) => id !== groupId);
+        if (group && group.markets.some((market) => market.id === state.selectedMarketId)) {
+          state.selectedMarketId = "";
+        }
       } else {
         state.expandedGroupIds = [...state.expandedGroupIds, groupId];
       }
@@ -450,6 +539,87 @@ function renderBoard(groups, venue, venueStatus) {
       renderDashboard();
     });
   }
+}
+
+function renderChampionshipCompareBoard(rows) {
+  const header = `
+    <div class="board-row board-header compare-board">
+      <div class="market-col sticky-left">Market</div>
+      <div class="meta-col">Time</div>
+      <div class="venue-col">
+        <div class="venue-head">Kalshi</div>
+        <div class="venue-subhead">YES | Bid/Ask | Spr | Depth | 1h</div>
+      </div>
+      <div class="venue-col">
+        <div class="venue-head">Polymarket</div>
+        <div class="venue-subhead">YES | Bid/Ask | Spr | Liq | 1h</div>
+      </div>
+    </div>
+  `;
+
+  const section = `
+    <div class="board-group">
+      <div class="board-row compare-board group-row expanded">
+        <div class="market-col sticky-left">
+          <strong>Women's College Basketball Championship</strong>
+          <small>Kalshi vs Polymarket</small>
+          <small>${rows.length} selections</small>
+        </div>
+        <div class="meta-col">${escapeHtml(formatDateTimeShort(rows[0]?.expiresAt))}</div>
+        <div class="venue-col">
+          <strong>${escapeHtml(formatCurrency(rows.reduce((sum, row) => sum + liquidityValueForMarket(row.kalshi), 0)))}</strong>
+          <span class="metric-inline">Visible depth</span>
+        </div>
+        <div class="venue-col">
+          <strong>${escapeHtml(formatCurrency(rows.reduce((sum, row) => sum + liquidityValueForMarket(row.polymarket), 0)))}</strong>
+          <span class="metric-inline">Reported liquidity</span>
+        </div>
+      </div>
+      ${rows.map((row) => renderCompareRow(row)).join("")}
+    </div>
+  `;
+
+  traderBoardEl.innerHTML = header + section;
+
+  for (const button of traderBoardEl.querySelectorAll(".board-row-button")) {
+    button.addEventListener("click", () => {
+      state.selectedMarketId = button.dataset.marketId;
+      renderDashboard();
+    });
+  }
+}
+
+function renderVenueCell(market, venueKey) {
+  if (!market) {
+    return `<div class="venue-col venue-empty"><span class="metric-inline">No live row</span></div>`;
+  }
+
+  const selected = market.id === state.selectedMarketId ? "venue-selected" : "";
+  const depthLabel = venueKey === "kalshi" ? "Depth" : "Liq";
+
+  return `
+    <button type="button" class="board-row-button venue-col ${selected}" data-market-id="${escapeHtml(market.id)}">
+      <strong>${escapeHtml(formatPercent(market.yesPrice))}</strong>
+      <span class="bidask">${escapeHtml(formatPercent(market.topBid?.price))} / ${escapeHtml(formatPercent(market.topAsk?.price))}</span>
+      <span class="metric-inline">Spr ${escapeHtml(formatSpread(market.spread))}</span>
+      <span class="metric-inline">${escapeHtml(depthLabel)} ${escapeHtml(formatCurrency(liquidityValueForMarket(market)))}</span>
+      <span class="metric-inline">1h ${escapeHtml(formatDelta(market.priceChange1h || 0))}</span>
+    </button>
+  `;
+}
+
+function renderCompareRow(row) {
+  return `
+    <div class="board-row compare-board child-row">
+      <div class="market-col sticky-left compare-selection-cell">
+        <strong>${escapeHtml(row.selection)}</strong>
+        <small>Women's College Basketball Championship</small>
+      </div>
+      <div class="meta-col">${escapeHtml(formatDateTimeShort(row.expiresAt))}</div>
+      ${renderVenueCell(row.kalshi, "kalshi")}
+      ${renderVenueCell(row.polymarket, "polymarket")}
+    </div>
+  `;
 }
 
 function renderGroupRow(group) {
@@ -482,7 +652,7 @@ function renderGroupRow(group) {
           <strong>${escapeHtml(formatCurrency(group.totalLiquidityUsd))}</strong>
           <span class="bidask">${escapeHtml(formatCompactNumber(group.markets.length))} selections</span>
           <span class="metric-inline">Top ${escapeHtml(firstMarket.category || "--")}</span>
-          <span class="metric-inline">Vol ${escapeHtml(formatCurrency(group.totalVolume24hUsd))}</span>
+          <span class="metric-inline">1h ${escapeHtml(formatDelta(firstMarket.priceChange1h || 0))}</span>
         </button>
       </div>
       ${childMarkup}
@@ -509,8 +679,8 @@ function renderBoardRow(market) {
         <strong>${escapeHtml(formatPercent(market.yesPrice))}</strong>
         <span class="bidask">${escapeHtml(formatPercent(market.topBid?.price))} / ${escapeHtml(formatPercent(market.topAsk?.price))}</span>
         <span class="metric-inline">Spr ${escapeHtml(formatSpread(market.spread))}</span>
-        <span class="metric-inline">Liq ${escapeHtml(formatCurrency(market.liquidityUsd))}</span>
-        <span class="metric-inline">Vol ${escapeHtml(formatCurrency(market.volume24hUsd))}</span>
+        <span class="metric-inline">${escapeHtml(market.platformKey === "kalshi" ? "Depth" : "Liq")} ${escapeHtml(formatCurrency(liquidityValueForMarket(market)))}</span>
+        <span class="metric-inline">1h ${escapeHtml(formatDelta(market.priceChange1h || 0))}</span>
       </button>
     </div>
   `;
@@ -533,7 +703,7 @@ function renderKalshiComponentRow(market, component) {
         <strong>${escapeHtml(formatPercent(market.yesPrice))}</strong>
         <span class="bidask">Combo market pricing</span>
         <span class="metric-inline">${escapeHtml(component.marketTicker || "Leg ticker unavailable")}</span>
-        <span class="metric-inline">Vol ${escapeHtml(formatCurrency(market.volume24hUsd))}</span>
+        <span class="metric-inline">1h ${escapeHtml(formatDelta(market.priceChange1h || 0))}</span>
       </button>
     </div>
   `;
@@ -545,6 +715,8 @@ function renderDetail(market) {
     detailSubtitleEl.textContent = "Choose a market row to inspect venue detail.";
     openVenueLinkEl.classList.add("hidden");
     signalsEl.innerHTML = '<div class="empty-card">No market selected.</div>';
+    quoteBreakdownEl.innerHTML = '<div class="empty-card">Select a row to see full quote detail.</div>';
+    marketFactsEl.innerHTML = '<div class="empty-card">Selection metadata will appear here.</div>';
     depthRowsEl.innerHTML = '<div class="empty-card">No orderbook depth available.</div>';
     pocketsEl.innerHTML = '<div class="empty-card">No midpoint liquidity pockets available.</div>';
     return;
@@ -564,11 +736,39 @@ function renderDetail(market) {
 
   signalsEl.innerHTML = [
     signalCard("YES price", formatPercent(market.yesPrice), `${formatDelta(market.priceChange)} vs prior snapshot`, market.priceChange),
-    signalCard("Reported liquidity", formatCurrency(market.liquidityUsd), market.liquidityChangeUsd ? `${market.liquidityChangeUsd > 0 ? "+" : "-"}${formatCurrency(Math.abs(market.liquidityChangeUsd))} since prior snapshot` : "No change yet", market.liquidityChangeUsd),
+    signalCard(liquidityLabelForMarket(market), formatCurrency(liquidityValueForMarket(market)), market.displayLiquidityChange1h ? `${market.displayLiquidityChange1h > 0 ? "+" : "-"}${formatCurrency(Math.abs(market.displayLiquidityChange1h))} over 1h` : "No change yet", market.displayLiquidityChange1h),
     signalCard("24h traded volume", formatCurrency(market.volume24hUsd), `Open interest ${formatCurrency(market.openInterestUsd)}`, 0),
     signalCard("Spread", formatSpread(market.spread), `Bid ${formatPercent(market.topBid?.price)} / Ask ${formatPercent(market.topAsk?.price)}`, market.spread ? -market.spread : 0),
     signalCard("Bid book notional", formatCurrency(market.totalBidNotionalUsd), `${formatCompactNumber(market.totalBidSize)} resting shares/contracts`, 0),
     signalCard("Ask book notional", formatCurrency(market.totalAskNotionalUsd), `${formatCompactNumber(market.totalAskSize)} resting shares/contracts`, 0),
+  ].join("");
+
+  quoteBreakdownEl.innerHTML = [
+    detailListRow("YES last", formatPercent(market.yesPrice)),
+    detailListRow("NO last", formatPercent(market.noPrice)),
+    detailListRow("YES bid", formatPercent(market.topBid?.price)),
+    detailListRow("YES ask", formatPercent(market.topAsk?.price)),
+    detailListRow("Spread", formatSpread(market.spread)),
+    detailListRow("Mid price", market.topBid?.price != null && market.topAsk?.price != null ? formatPercent((Number(market.topBid.price) + Number(market.topAsk.price)) / 2) : "--"),
+    detailListRow("5m change", formatDelta(market.priceChange5m || 0)),
+    detailListRow("1h change", formatDelta(market.priceChange1h || 0)),
+    detailListRow("Bid size", formatCompactNumber(market.totalBidSize)),
+    detailListRow("Ask size", formatCompactNumber(market.totalAskSize)),
+    detailListRow("Bid notional", formatCurrency(market.totalBidNotionalUsd)),
+    detailListRow("Ask notional", formatCurrency(market.totalAskNotionalUsd)),
+  ].join("");
+
+  marketFactsEl.innerHTML = [
+    detailListRow("Venue", market.platform),
+    detailListRow("Sport", market.sport || "--"),
+    detailListRow("Market type", market.category || "--"),
+    detailListRow("Subtitle", market.subtitle || "--"),
+    detailListRow("Selection id", market.id || "--"),
+    detailListRow("Closes", formatDateTimeShort(market.expiresAt)),
+    detailListRow(liquidityLabelForMarket(market), formatCurrency(liquidityValueForMarket(market))),
+    detailListRow("24h volume", formatCurrency(market.volume24hUsd)),
+    detailListRow("Open interest", formatCurrency(market.openInterestUsd)),
+    detailListRow("Alert count", formatRawNumber(market.alerts?.length || 0)),
   ].join("");
 
   renderDepth(market);
@@ -581,6 +781,15 @@ function signalCard(label, value, note, toneValue) {
       <span>${escapeHtml(label)}</span>
       <strong>${escapeHtml(value)}</strong>
       <small class="${toneClass(toneValue)}">${escapeHtml(note)}</small>
+    </div>
+  `;
+}
+
+function detailListRow(label, value) {
+  return `
+    <div class="detail-list-row">
+      <span>${escapeHtml(label)}</span>
+      <strong>${escapeHtml(value)}</strong>
     </div>
   `;
 }

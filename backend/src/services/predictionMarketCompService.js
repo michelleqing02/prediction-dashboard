@@ -8,6 +8,8 @@ let snapshotCache = {
 };
 
 let previousMarketState = new Map();
+let marketHistory = new Map();
+const HISTORY_RETENTION_MS = 2 * 60 * 60 * 1000;
 
 const SPORT_KEYWORDS = {
   "College Basketball": [
@@ -69,6 +71,10 @@ const POLYMARKET_SPORT_TAGS = [
   { tagSlug: "nba", sport: "NBA" },
   { tagSlug: "nhl", sport: "NHL" },
 ];
+const KALSHI_FEATURED_EVENT_TICKER = "KXWMARMAD-26";
+const KALSHI_FEATURED_EVENT_URL = "https://kalshi.com/markets/kxwmarmad/march-tournament-w/kxwmarmad-26";
+const POLYMARKET_FEATURED_EVENT_SLUG = "2026-womens-ncaa-tournament-winner";
+const POLYMARKET_FEATURED_EVENT_URL = "https://polymarket.com/event/2026-womens-ncaa-tournament-winner";
 
 function toNumber(value, fallback = 0) {
   const num = Number(value);
@@ -126,6 +132,15 @@ function marketTypeLabel(value) {
     .filter(Boolean)
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
     .join(" ");
+}
+
+function featuredChampionshipLabel() {
+  return "Women's College Basketball Championship";
+}
+
+function teamLabelFromTitle(title) {
+  const match = String(title || "").match(/^Will (.+?) win/i);
+  return match ? match[1].trim() : String(title || "").trim();
 }
 
 function kalshiCategoryLabel(market) {
@@ -240,6 +255,62 @@ async function fetchPolymarketSportEventPages(baseUrl, tagSlug) {
   return allEvents;
 }
 
+async function fetchPolymarketFeaturedEvent(baseUrl) {
+  const payload = await fetchJson(
+    `${baseUrl}/events?slug=${encodeURIComponent(POLYMARKET_FEATURED_EVENT_SLUG)}`,
+    {},
+    { retries: 1, delayMs: 500 }
+  );
+
+  const event = Array.isArray(payload) ? payload[0] : null;
+  if (!event) return [];
+
+  const eventMarkets = Array.isArray(event.markets) ? event.markets : [];
+
+  return eventMarkets
+    .filter((market) => market.active && !market.closed)
+    .map((market) => {
+      const bestBid = clampProbability(toNumber(market.bestBid));
+      const bestAsk = clampProbability(toNumber(market.bestAsk));
+      const yesPrice = clampProbability(
+        toNumber(market.lastTradePrice) ||
+          bestBid ||
+          bestAsk ||
+          0.5
+      );
+
+      return {
+        id: `polymarket-${market.slug || market.id}`,
+        platform: "Polymarket",
+        platformKey: "polymarket",
+        title: market.question || event.title || market.slug,
+        subtitle: featuredChampionshipLabel(),
+        category: featuredChampionshipLabel(),
+        sport: "College Basketball",
+        selectionLabel: market.groupItemTitle || teamLabelFromTitle(market.question),
+        url: POLYMARKET_FEATURED_EVENT_URL,
+        yesPrice,
+        noPrice: clampProbability(1 - yesPrice),
+        lastPrice: yesPrice,
+        liquidityUsd:
+          toNumber(market.liquidityClob) ||
+          toNumber(market.liquidityNum) ||
+          toNumber(event.liquidityClob) ||
+          toNumber(event.liquidity),
+        volume24hUsd:
+          toNumber(market.volume24hrClob) ||
+          toNumber(market.volume24hr) ||
+          0,
+        openInterestUsd: toNumber(event.openInterest) || toNumber(market.volumeNum),
+        expiresAt: market.endDate || event.endDate || null,
+        yesBook: {
+          bids: bestBid ? [{ price: bestBid, size: 0 }] : [],
+          asks: bestAsk ? [{ price: bestAsk, size: 0 }] : [],
+        },
+      };
+    });
+}
+
 function computeDepthMetrics(book) {
   const bids = Array.isArray(book?.bids) ? [...book.bids] : [];
   const asks = Array.isArray(book?.asks) ? [...book.asks] : [];
@@ -301,6 +372,31 @@ function buildAlertFlags(current, previous) {
   return alerts;
 }
 
+function pruneAndRecordHistory(markets, timestamp) {
+  const nextHistory = new Map();
+
+  for (const market of markets) {
+    const prior = marketHistory.get(market.id) || [];
+    const kept = prior.filter((entry) => timestamp - entry.timestamp <= HISTORY_RETENTION_MS);
+    kept.push({
+      timestamp,
+      yesPrice: market.yesPrice,
+      displayLiquidityUsd: market.displayLiquidityUsd || market.liquidityUsd || 0,
+    });
+    nextHistory.set(market.id, kept);
+  }
+
+  marketHistory = nextHistory;
+}
+
+function valueAtWindow(history, now, windowMs, field) {
+  if (!Array.isArray(history) || !history.length) return null;
+  const cutoff = now - windowMs;
+  const candidates = history.filter((entry) => entry.timestamp <= cutoff);
+  if (candidates.length) return candidates[candidates.length - 1][field];
+  return history[0][field];
+}
+
 function formatCompactCurrency(value) {
   return new Intl.NumberFormat("en-US", {
     style: "currency",
@@ -315,13 +411,40 @@ function normalizeMarket(rawMarket) {
   const previous = previousMarketState.get(rawMarket.id);
   const liquidityChangeUsd = previous ? rawMarket.liquidityUsd - previous.liquidityUsd : 0;
   const priceChange = previous ? rawMarket.yesPrice - previous.yesPrice : rawMarket.yesPrice - rawMarket.lastPrice;
+  const displayLiquidityUsd =
+    rawMarket.platformKey === "kalshi" && toNumber(rawMarket.liquidityUsd) <= 0
+      ? depth.bidNotional + depth.askNotional
+      : rawMarket.liquidityUsd;
+  const history = marketHistory.get(rawMarket.id) || [];
+  const priceChange5m = rawMarket.yesPrice - toNumber(valueAtWindow(history, Date.now(), 5 * 60 * 1000, "yesPrice"), rawMarket.yesPrice);
+  const priceChange1h = rawMarket.yesPrice - toNumber(valueAtWindow(history, Date.now(), 60 * 60 * 1000, "yesPrice"), rawMarket.yesPrice);
+  const displayLiquidityChange1h =
+    displayLiquidityUsd -
+    toNumber(valueAtWindow(history, Date.now(), 60 * 60 * 1000, "displayLiquidityUsd"), displayLiquidityUsd);
+  const alerts = buildAlertFlags(rawMarket, previous);
+
+  if (Math.abs(priceChange1h) >= 0.05) {
+    alerts.push({
+      type: "price-window",
+      label: `${priceChange1h > 0 ? "1h YES up" : "1h YES down"} ${Math.abs(priceChange1h * 100).toFixed(1)}c`,
+      intensity: Math.abs(priceChange1h) >= 0.1 ? "high" : "medium",
+    });
+  }
 
   return {
     ...rawMarket,
     sport: rawMarket.sport || inferSport(rawMarket),
     matchTokens: titleTokens(rawMarket.title),
     priceChange,
+    priceChange5m,
+    priceChange1h,
     liquidityChangeUsd,
+    displayLiquidityUsd,
+    displayLiquidityChange1h,
+    liquidityLabel:
+      rawMarket.platformKey === "kalshi" && toNumber(rawMarket.liquidityUsd) <= 0
+        ? "Visible depth"
+        : "Reported liquidity",
     spread: depth.spread,
     topBid: depth.topBid,
     topAsk: depth.topAsk,
@@ -330,7 +453,7 @@ function normalizeMarket(rawMarket) {
     totalBidNotionalUsd: depth.bidNotional,
     totalAskNotionalUsd: depth.askNotional,
     focusDepth: depth.nearestLevels,
-    alerts: buildAlertFlags(rawMarket, previous),
+    alerts,
   };
 }
 
@@ -404,56 +527,82 @@ function groupComparableMarkets(markets) {
 
 async function fetchKalshiMarkets() {
   const baseUrl = config.predictionMarkets.kalshiBaseUrl.replace(/\/$/, "");
-  const candidates = await fetchKalshiMarketPages(baseUrl);
-  const selected = keepLiveSportsMarkets(
-    candidates.filter((market) => !market.status || market.status === "open" || market.status === "active")
+  const payload = await fetchJson(
+    `${baseUrl}/events/${KALSHI_FEATURED_EVENT_TICKER}`,
+    {},
+    { retries: 1, delayMs: 500 }
   );
+  const event = payload?.event || {};
+  const markets = Array.isArray(payload?.markets) ? payload.markets : [];
 
-  return selected
+  return markets
+    .filter((market) => !market.status || market.status === "open" || market.status === "active" || market.status === "initialized")
     .map((market) => {
-      const yesBid = clampProbability(toNumber(market.yes_bid) / 100);
-      const yesAsk = clampProbability(toNumber(market.yes_ask) / 100);
-      const lastPrice = clampProbability(toNumber(market.last_price) / 100 || yesAsk || yesBid || 0.5);
+      const yesBid = clampProbability(
+        toNumber(market.yes_bid_dollars) ||
+          toNumber(market.yes_bid) / 100
+      );
+      const yesAsk = clampProbability(
+        toNumber(market.yes_ask_dollars) ||
+          toNumber(market.yes_ask) / 100
+      );
+      const lastPrice = clampProbability(
+        toNumber(market.last_price) / 100 ||
+          toNumber(market.last_price_dollars) ||
+          yesAsk ||
+          yesBid ||
+          0.5
+      );
       const yesPrice = lastPrice || yesAsk || yesBid || 0.5;
       const noPrice = clampProbability(1 - yesPrice);
-      const impliedBidSize = toNumber(market.yes_bid_dollars) || toNumber(market.volume) || 0;
-      const impliedAskSize = toNumber(market.yes_ask_dollars) || toNumber(market.liquidity) || 0;
-      const components = buildKalshiComponents(market);
-      const sport = inferSport({
-        title: market.title,
-        subtitle: market.subtitle || market.series_ticker,
-        category: market.category || market.event_ticker,
-        sport: market.sport,
-      });
+      const bidSize = Math.max(0, toNumber(market.yes_bid_size) || toNumber(market.yes_bid_size_fp) || 0);
+      const askSize = Math.max(0, toNumber(market.yes_ask_size) || toNumber(market.yes_ask_size_fp) || 0);
+      const liquidityUsd =
+        toNumber(market.liquidity_dollars) ||
+        toNumber(market.liquidity) ||
+        toNumber(event.liquidity_dollars) ||
+        toNumber(event.liquidity);
+      const volume24hUsd =
+        toNumber(market.volume_24h_dollars) ||
+        toNumber(market.volume_24h) ||
+        toNumber(market.volume_24h_fp) ||
+        toNumber(market.volume) ||
+        0;
+      const openInterestUsd =
+        toNumber(market.open_interest_dollars) ||
+        toNumber(market.open_interest) ||
+        toNumber(market.open_interest_fp) ||
+        0;
 
       return {
         id: `kalshi-${market.ticker}`,
         platform: "Kalshi",
         platformKey: "kalshi",
         title: market.title || market.subtitle || market.ticker,
-        subtitle: market.subtitle || market.series_ticker || "Kalshi market",
-        category: kalshiCategoryLabel(market),
-        sport,
-        components,
-        url: `${config.predictionMarkets.kalshiWebBaseUrl.replace(/\/$/, "")}/market/${market.ticker}`,
+        subtitle: "Women's College Basketball Championship",
+        category: "Women's College Basketball Championship",
+        sport: "College Basketball",
+        selectionLabel: teamLabelFromTitle(market.title),
+        components: [],
+        url: KALSHI_FEATURED_EVENT_URL,
         yesPrice,
         noPrice,
         lastPrice,
-        liquidityUsd: toNumber(market.liquidity) || toNumber(market.dollar_volume),
-        volume24hUsd: toNumber(market.volume_24h) || toNumber(market.dollar_volume),
-        openInterestUsd: toNumber(market.open_interest) || toNumber(market.dollar_volume),
-        expiresAt: market.expiration_time || market.close_time || null,
+        liquidityUsd,
+        volume24hUsd,
+        openInterestUsd,
+        expiresAt: market.expiration_time || market.close_time || event.settlement_timer || null,
         yesBook: {
-          bids: yesBid ? [{ price: yesBid, size: impliedBidSize }] : [],
-          asks: yesAsk ? [{ price: yesAsk, size: impliedAskSize }] : [],
+          bids: yesBid ? [{ price: yesBid, size: bidSize }] : [],
+          asks: yesAsk ? [{ price: yesAsk, size: askSize }] : [],
         },
       };
-    })
-    .filter((market) => market.sport);
+    });
 }
 
 async function fetchPolymarketMarkets() {
   const gammaBaseUrl = config.predictionMarkets.polymarketGammaBaseUrl.replace(/\/$/, "");
+  const featuredMarkets = await fetchPolymarketFeaturedEvent(gammaBaseUrl);
   const eventGroups = await Promise.all(
     POLYMARKET_SPORT_TAGS.map(async ({ tagSlug, sport }) => ({
       sport,
@@ -461,7 +610,7 @@ async function fetchPolymarketMarkets() {
     }))
   );
 
-  return eventGroups
+  const generalMarkets = eventGroups
     .flatMap(({ sport, events }) =>
       events.flatMap((event) =>
         (Array.isArray(event.markets) ? event.markets : []).map((market) => {
@@ -486,6 +635,7 @@ async function fetchPolymarketMarkets() {
               event.category ||
               "General",
             sport,
+            selectionLabel: market.groupItemTitle || teamLabelFromTitle(market.question || ""),
             url: `${config.predictionMarkets.polymarketWebBaseUrl.replace(/\/$/, "")}/event/${event.slug || market.slug || market.id}`,
             yesPrice,
             noPrice: clampProbability(1 - yesPrice),
@@ -510,6 +660,13 @@ async function fetchPolymarketMarkets() {
       )
     )
     .filter((market) => market.sport);
+
+  const deduped = new Map();
+  for (const market of [...generalMarkets, ...featuredMarkets]) {
+    deduped.set(market.id, market);
+  }
+
+  return [...deduped.values()];
 }
 
 async function loadSource(sourceName, loader, fallback) {
@@ -551,12 +708,14 @@ async function buildDashboardPayload() {
     .map(normalizeMarket)
     .sort((a, b) => b.liquidityUsd - a.liquidityUsd);
 
+  pruneAndRecordHistory(normalizedMarkets, Date.now());
+
   previousMarketState = new Map(
     normalizedMarkets.map((market) => [
       market.id,
       {
         yesPrice: market.yesPrice,
-        liquidityUsd: market.liquidityUsd,
+        liquidityUsd: market.displayLiquidityUsd || market.liquidityUsd,
         volume24hUsd: market.volume24hUsd,
       },
     ])
@@ -588,7 +747,7 @@ async function buildDashboardPayload() {
     summary: {
       totalMarkets: normalizedMarkets.length,
       comparableGroups: comparableGroups.length,
-      totalLiquidityUsd: normalizedMarkets.reduce((sum, market) => sum + market.liquidityUsd, 0),
+      totalLiquidityUsd: normalizedMarkets.reduce((sum, market) => sum + (market.displayLiquidityUsd || market.liquidityUsd), 0),
       totalVolume24hUsd: normalizedMarkets.reduce((sum, market) => sum + market.volume24hUsd, 0),
       activeAlerts: alerts.length,
     },

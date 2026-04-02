@@ -1,3 +1,5 @@
+@import url("https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap");
+
 :root {
   --bg: #091321;
   --panel: #0d1a2c;
@@ -42,7 +44,7 @@ body {
   margin: 0;
   min-height: 100vh;
   color: var(--text);
-  font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+  font-family: "IBM Plex Sans", "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
   background:
     linear-gradient(180deg, #10213a 0%, #08111f 55%, #050a12 100%);
 }
@@ -140,7 +142,7 @@ h1,
 h2,
 strong {
   margin: 0;
-  font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+  font-family: "IBM Plex Sans", "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
 }
 
 h1 {
@@ -163,7 +165,8 @@ h2 {
 }
 
 .hero-metrics,
-.signal-grid {
+.signal-grid,
+.selection-detail-grid {
   display: grid;
   gap: 8px;
 }
@@ -396,6 +399,10 @@ body[data-theme="pink"] .stamp {
   align-items: stretch;
 }
 
+.board-row.compare-board {
+  grid-template-columns: 360px 140px minmax(240px, 1fr) minmax(240px, 1fr);
+}
+
 .board-row:not(.board-header) {
   border-top: 1px solid rgba(255, 255, 255, 0.04);
 }
@@ -542,6 +549,11 @@ body[data-theme="pink"] .group-row .venue-col {
   position: relative;
 }
 
+.venue-empty {
+  padding: 12px;
+  align-content: center;
+}
+
 .venue-col::before {
   content: "";
   position: absolute;
@@ -578,6 +590,10 @@ body[data-theme="pink"] .group-row .venue-col {
   background: linear-gradient(180deg, rgba(168, 209, 111, 0.16), rgba(168, 209, 111, 0.05)) !important;
 }
 
+.compare-selection-cell {
+  padding: 9px 12px;
+}
+
 .detail-grid {
   margin-top: 12px;
   display: grid;
@@ -587,6 +603,47 @@ body[data-theme="pink"] .group-row .venue-col {
 
 .signal-grid {
   grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.selection-detail-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin-top: 10px;
+}
+
+.detail-block-head {
+  margin-bottom: 8px;
+  color: var(--muted);
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.detail-list {
+  display: grid;
+  gap: 8px;
+}
+
+.detail-list-row {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  background: var(--panel-strong);
+}
+
+.detail-list-row span {
+  color: var(--muted);
+  font-size: 0.76rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.detail-list-row strong {
+  font-size: 0.92rem;
+  text-align: right;
+  line-height: 1.3;
 }
 
 .depth-table {
@@ -648,7 +705,8 @@ body[data-theme="pink"] .group-row .venue-col {
 
   .controls-dense,
   .hero-metrics,
-  .signal-grid {
+  .signal-grid,
+  .selection-detail-grid {
     grid-template-columns: 1fr;
   }
 }
