@@ -21,15 +21,14 @@ const depthRowsEl = document.getElementById("depthRows");
 const pocketsEl = document.getElementById("pockets");
 
 const VENUES = [
+  { key: "compare", label: "Compare" },
   { key: "kalshi", label: "Kalshi" },
   { key: "polymarket", label: "Polymarket" },
 ];
 
-const SPORT_ORDER = ["College Basketball", "NBA", "NHL"];
+const SPORT_ORDER = ["College Basketball"];
 const SPORT_LABELS = {
   "College Basketball": "NCAAB",
-  NBA: "NBA",
-  NHL: "NHL",
 };
 
 const GAME_MARKET_TYPES = [
@@ -43,15 +42,17 @@ const GAME_MARKET_TYPES = [
   "rebounds",
   "assists",
 ];
+const COMPARE_SPORTS = new Set(["College Basketball"]);
 
 const state = {
   dashboard: null,
-  selectedSport: "",
+  selectedSport: "College Basketball",
   selectedCategory: "",
-  selectedVenueKey: "polymarket",
+  selectedVenueKey: "compare",
   selectedMarketId: "",
   expandedGroupIds: [],
   hasSeededExpandedGroups: false,
+  expandedCompareGroupIds: [],
   theme: window.localStorage.getItem("prediction-market-theme") || "black",
 };
 
@@ -263,36 +264,90 @@ function buildMarketGroups(markets) {
     });
 }
 
-function buildChampionshipCompareRows(dashboard) {
-  const featuredMarkets = (dashboard?.markets || []).filter((market) =>
-    String(market.category || "").toLowerCase() === "women's college basketball championship"
+function buildCompareGroups(dashboard) {
+  const collegeBasketballMarkets = (dashboard?.markets || []).filter(
+    (market) => market.sport === "College Basketball" && market.selectionKey
   );
+  const venueGroups = new Map();
 
-  const rows = new Map();
+  for (const market of collegeBasketballMarkets) {
+    const parentLabel = String(
+      market.compareParentLabel ||
+      market.compareGroupLabel ||
+      market.subtitle ||
+      market.category ||
+      market.title ||
+      "Comparable Market"
+    ).trim();
+    const venueGroupKey = `${market.platformKey}|${market.compareGroupType || market.category || "general"}|${parentLabel}`;
 
-  for (const market of featuredMarkets) {
-    const key = String(market.selectionLabel || market.title || "").trim();
-    if (!key) continue;
-    if (!rows.has(key)) {
-      rows.set(key, {
-        selection: key,
-        expiresAt: market.expiresAt || null,
-        kalshi: null,
-        polymarket: null,
+    if (!venueGroups.has(venueGroupKey)) {
+      venueGroups.set(venueGroupKey, {
+        platformKey: market.platformKey,
+        type: market.compareGroupType || market.category || "general",
+        label: parentLabel,
+        marketsBySelection: new Map(),
       });
     }
 
-    const row = rows.get(key);
-    if (market.platformKey === "kalshi") row.kalshi = market;
-    if (market.platformKey === "polymarket") row.polymarket = market;
-    row.expiresAt = row.expiresAt || market.expiresAt || null;
+    venueGroups.get(venueGroupKey).marketsBySelection.set(market.selectionKey, market);
   }
 
-  return [...rows.values()].sort((a, b) => {
-    const aScore = Math.max(Number(a.kalshi?.yesPrice || 0), Number(a.polymarket?.yesPrice || 0));
-    const bScore = Math.max(Number(b.kalshi?.yesPrice || 0), Number(b.polymarket?.yesPrice || 0));
-    return bScore - aScore;
-  });
+  const compareGroups = new Map();
+
+  for (const venueGroup of venueGroups.values()) {
+    const signature = `${venueGroup.type}|${[...venueGroup.marketsBySelection.keys()].sort().join("|")}`;
+    if (!compareGroups.has(signature)) {
+      compareGroups.set(signature, {
+        id: signature,
+        label: venueGroup.label,
+        type: venueGroup.type,
+        rows: new Map(),
+      });
+    }
+
+    const compareGroup = compareGroups.get(signature);
+    if (venueGroup.platformKey === "kalshi") {
+      compareGroup.label = venueGroup.label || compareGroup.label;
+    }
+
+    for (const [selectionKey, market] of venueGroup.marketsBySelection.entries()) {
+      if (!compareGroup.rows.has(selectionKey)) {
+        compareGroup.rows.set(selectionKey, {
+          selection: market.selectionLabel || market.title || selectionKey,
+          expiresAt: market.expiresAt || null,
+          kalshi: null,
+          polymarket: null,
+        });
+      }
+
+      const row = compareGroup.rows.get(selectionKey);
+      if (market.platformKey === "kalshi") row.kalshi = market;
+      if (market.platformKey === "polymarket") row.polymarket = market;
+      row.selection = row.selection || market.selectionLabel || market.title || selectionKey;
+      row.expiresAt = row.expiresAt || market.expiresAt || null;
+    }
+  }
+
+  return [...compareGroups.values()]
+    .filter((group) => {
+      const rows = [...group.rows.values()];
+      return rows.some((row) => row.kalshi) && rows.some((row) => row.polymarket);
+    })
+    .map((group) => ({
+      ...group,
+      rows: [...group.rows.values()].sort((a, b) => {
+        const aScore = Math.max(Number(a.kalshi?.yesPrice || 0), Number(a.polymarket?.yesPrice || 0));
+        const bScore = Math.max(Number(b.kalshi?.yesPrice || 0), Number(b.polymarket?.yesPrice || 0));
+        return bScore - aScore;
+      }),
+    }))
+    .sort((a, b) => {
+      const aTime = a.rows[0]?.expiresAt ? new Date(a.rows[0].expiresAt).getTime() : Number.MAX_SAFE_INTEGER;
+      const bTime = b.rows[0]?.expiresAt ? new Date(b.rows[0].expiresAt).getTime() : Number.MAX_SAFE_INTEGER;
+      if (aTime !== bTime) return aTime - bTime;
+      return a.label.localeCompare(b.label);
+    });
 }
 
 function syncExpandedGroups(groups) {
@@ -312,12 +367,28 @@ function syncExpandedGroups(groups) {
   }
 }
 
+function syncExpandedCompareGroups(groups) {
+  const validIds = new Set(groups.map((group) => group.id));
+  state.expandedCompareGroupIds = state.expandedCompareGroupIds.filter((id) => validIds.has(id));
+
+  if (state.selectedMarketId) {
+    const selectedGroup = groups.find((group) =>
+      group.rows.some((row) => row.kalshi?.id === state.selectedMarketId || row.polymarket?.id === state.selectedMarketId)
+    );
+    if (selectedGroup && !state.expandedCompareGroupIds.includes(selectedGroup.id)) {
+      state.expandedCompareGroupIds.push(selectedGroup.id);
+    }
+  }
+}
+
 async function loadDashboard() {
   try {
     const params = new URLSearchParams();
-    const wantsChampionshipCompare = state.selectedSport === "College Basketball";
-    if (state.selectedVenueKey && !wantsChampionshipCompare) params.set("platform", state.selectedVenueKey);
-    if (state.selectedCategory) params.set("category", state.selectedCategory);
+    const wantsChampionshipCompare = COMPARE_SPORTS.has(state.selectedSport);
+    if (state.selectedVenueKey && state.selectedVenueKey !== "compare" && !wantsChampionshipCompare) {
+      params.set("platform", state.selectedVenueKey);
+    }
+    if (state.selectedCategory && !wantsChampionshipCompare) params.set("category", state.selectedCategory);
     if (state.selectedSport) params.set("sport", state.selectedSport);
     if (searchInput.value.trim()) params.set("search", searchInput.value.trim());
 
@@ -335,6 +406,7 @@ async function loadDashboard() {
       state.selectedMarketId = venueMarkets[0]?.id || "";
     }
     syncExpandedGroups(venueGroups);
+    syncExpandedCompareGroups(buildCompareGroups(payload));
 
     renderCategoryOptions(payload.categories || []);
     renderSportTabs(payload.sports || []);
@@ -399,13 +471,16 @@ function renderSportTabs(sports) {
 function renderVenueTabs(sourceStatus) {
   venueTabsEl.innerHTML = VENUES.map((venue) => {
     const active = venue.key === state.selectedVenueKey ? "active" : "";
-    const mode = sourceStatus?.[venue.key]?.mode || "--";
+    const mode =
+      venue.key === "compare"
+        ? "both"
+        : sourceStatus?.[venue.key]?.mode || "--";
     return `<button type="button" class="sport-tab ${active}" data-venue="${escapeHtml(venue.key)}">${escapeHtml(venue.label)} <span class="tab-mode">${escapeHtml(mode)}</span></button>`;
   }).join("");
 
   for (const button of venueTabsEl.querySelectorAll(".sport-tab")) {
     button.addEventListener("click", () => {
-      state.selectedVenueKey = button.dataset.venue || "polymarket";
+      state.selectedVenueKey = button.dataset.venue || "compare";
       loadDashboard();
     });
   }
@@ -417,24 +492,29 @@ function renderDashboard() {
   const venueStatus = dashboard.sourceStatus?.[venue.key] || {};
   const venueMarkets = venueMarketsFromDashboard(dashboard);
   const venueGroups = buildMarketGroups(venueMarkets);
-  const compareRows = buildChampionshipCompareRows(dashboard);
-  const showCompareBoard = state.selectedSport === "College Basketball" && compareRows.length > 0;
+  const compareGroups = buildCompareGroups(dashboard);
+  const showCompareBoard =
+    state.selectedVenueKey === "compare" &&
+    COMPARE_SPORTS.has(state.selectedSport) &&
+    compareGroups.length > 0;
   const selectedMarket = showCompareBoard ? selectedMarketFromDashboard(dashboard) : selectedVenueMarket();
-  const compareKalshiMarkets = showCompareBoard ? compareRows.map((row) => row.kalshi).filter(Boolean) : [];
-  const comparePolymarketMarkets = showCompareBoard ? compareRows.map((row) => row.polymarket).filter(Boolean) : [];
+  const compareKalshiMarkets = showCompareBoard ? compareGroups.flatMap((group) => group.rows.map((row) => row.kalshi).filter(Boolean)) : [];
+  const comparePolymarketMarkets = showCompareBoard ? compareGroups.flatMap((group) => group.rows.map((row) => row.polymarket).filter(Boolean)) : [];
+  const compareRowCount = showCompareBoard ? compareGroups.reduce((sum, group) => sum + group.rows.length, 0) : 0;
 
   updatedAtEl.textContent = dashboard.generatedAt
     ? new Date(dashboard.generatedAt).toLocaleTimeString()
     : "--";
   sourceModeEl.textContent = venueModeLabel(dashboard.sourceStatus);
   boardTitleEl.textContent = showCompareBoard
-    ? `Women's Championship Compare | ${sportLabel(state.selectedSport)}`
+    ? `College Basketball Compare | ${sportLabel(state.selectedSport)}`
     : `${venue.label} board${state.selectedSport ? ` | ${sportLabel(state.selectedSport)}` : ""}`;
-  venueTabsEl.classList.toggle("hidden", showCompareBoard);
+  categorySelect.disabled = showCompareBoard;
+  searchInput.disabled = false;
 
   heroMetricsEl.innerHTML = showCompareBoard
     ? [
-        metricTile("Selections", compareRows.length),
+        metricTile("Selections", compareRowCount),
         metricTile("Kalshi", compareKalshiMarkets.length),
         metricTile("Polymarket", comparePolymarketMarkets.length),
         metricTile("Kalshi Depth", formatCurrency(compareKalshiMarkets.reduce((sum, market) => sum + liquidityValueForMarket(market), 0))),
@@ -464,7 +544,7 @@ function renderDashboard() {
       : (dashboard.alerts || []).filter((alert) => alert.platform.toLowerCase() === venue.label.toLowerCase())
   );
   if (showCompareBoard) {
-    renderChampionshipCompareBoard(compareRows);
+    renderChampionshipCompareBoard(compareGroups);
   } else {
     renderBoard(venueGroups, venue, venueStatus);
   }
@@ -541,7 +621,7 @@ function renderBoard(groups, venue, venueStatus) {
   }
 }
 
-function renderChampionshipCompareBoard(rows) {
+function renderChampionshipCompareBoard(groups) {
   const header = `
     <div class="board-row board-header compare-board">
       <div class="market-col sticky-left">Market</div>
@@ -557,29 +637,42 @@ function renderChampionshipCompareBoard(rows) {
     </div>
   `;
 
-  const section = `
+  const section = groups.map((group) => `
     <div class="board-group">
-      <div class="board-row compare-board group-row expanded">
-        <div class="market-col sticky-left">
-          <strong>Women's College Basketball Championship</strong>
+      <div class="board-row compare-board group-row ${state.expandedCompareGroupIds.includes(group.id) ? "expanded" : ""}">
+        <button type="button" class="group-row-button market-col sticky-left" data-compare-group-id="${escapeHtml(group.id)}">
+          <strong>${state.expandedCompareGroupIds.includes(group.id) ? "v" : ">"} ${escapeHtml(group.label)}</strong>
           <small>Kalshi vs Polymarket</small>
-          <small>${rows.length} selections</small>
-        </div>
-        <div class="meta-col">${escapeHtml(formatDateTimeShort(rows[0]?.expiresAt))}</div>
-        <div class="venue-col">
-          <strong>${escapeHtml(formatCurrency(rows.reduce((sum, row) => sum + liquidityValueForMarket(row.kalshi), 0)))}</strong>
+          <small>${group.rows.length} selections</small>
+        </button>
+        <div class="meta-col">${escapeHtml(formatDateTimeShort(group.rows[0]?.expiresAt))}</div>
+        <button type="button" class="group-row-button venue-col" data-compare-group-id="${escapeHtml(group.id)}">
+          <strong>${escapeHtml(formatCurrency(group.rows.reduce((sum, row) => sum + liquidityValueForMarket(row.kalshi), 0)))}</strong>
           <span class="metric-inline">Visible depth</span>
-        </div>
-        <div class="venue-col">
-          <strong>${escapeHtml(formatCurrency(rows.reduce((sum, row) => sum + liquidityValueForMarket(row.polymarket), 0)))}</strong>
+        </button>
+        <button type="button" class="group-row-button venue-col" data-compare-group-id="${escapeHtml(group.id)}">
+          <strong>${escapeHtml(formatCurrency(group.rows.reduce((sum, row) => sum + liquidityValueForMarket(row.polymarket), 0)))}</strong>
           <span class="metric-inline">Reported liquidity</span>
-        </div>
+        </button>
       </div>
-      ${rows.map((row) => renderCompareRow(row)).join("")}
+      ${state.expandedCompareGroupIds.includes(group.id) ? group.rows.map((row) => renderCompareRow(row, group.label)).join("") : ""}
     </div>
-  `;
+  `).join("");
 
   traderBoardEl.innerHTML = header + section;
+
+  for (const button of traderBoardEl.querySelectorAll("[data-compare-group-id]")) {
+    button.addEventListener("click", () => {
+      const groupId = button.dataset.compareGroupId;
+      if (!groupId) return;
+      if (state.expandedCompareGroupIds.includes(groupId)) {
+        state.expandedCompareGroupIds = state.expandedCompareGroupIds.filter((id) => id !== groupId);
+      } else {
+        state.expandedCompareGroupIds = [...state.expandedCompareGroupIds, groupId];
+      }
+      renderDashboard();
+    });
+  }
 
   for (const button of traderBoardEl.querySelectorAll(".board-row-button")) {
     button.addEventListener("click", () => {
@@ -608,12 +701,12 @@ function renderVenueCell(market, venueKey) {
   `;
 }
 
-function renderCompareRow(row) {
+function renderCompareRow(row, groupLabel) {
   return `
     <div class="board-row compare-board child-row">
       <div class="market-col sticky-left compare-selection-cell">
         <strong>${escapeHtml(row.selection)}</strong>
-        <small>Women's College Basketball Championship</small>
+        <small>${escapeHtml(groupLabel)}</small>
       </div>
       <div class="meta-col">${escapeHtml(formatDateTimeShort(row.expiresAt))}</div>
       ${renderVenueCell(row.kalshi, "kalshi")}

@@ -68,13 +68,53 @@ const SPORT_KEYWORDS = {
 
 const POLYMARKET_SPORT_TAGS = [
   { tagSlug: "ncaab", sport: "College Basketball" },
-  { tagSlug: "nba", sport: "NBA" },
-  { tagSlug: "nhl", sport: "NHL" },
 ];
-const KALSHI_FEATURED_EVENT_TICKER = "KXWMARMAD-26";
-const KALSHI_FEATURED_EVENT_URL = "https://kalshi.com/markets/kxwmarmad/march-tournament-w/kxwmarmad-26";
-const POLYMARKET_FEATURED_EVENT_SLUG = "2026-womens-ncaa-tournament-winner";
-const POLYMARKET_FEATURED_EVENT_URL = "https://polymarket.com/event/2026-womens-ncaa-tournament-winner";
+const FEATURED_COLLEGE_BASKETBALL_COMPARE_MARKETS = [
+  {
+    key: "wcbb-championship",
+    sport: "College Basketball",
+    label: "Women's College Basketball Championship",
+    kalshiEventTicker: "KXWMARMAD-26",
+    kalshiUrl: "https://kalshi.com/markets/kxwmarmad/march-tournament-w/kxwmarmad-26",
+    polymarketEventSlug: "2026-womens-ncaa-tournament-winner",
+    polymarketUrl: "https://polymarket.com/event/2026-womens-ncaa-tournament-winner",
+  },
+  {
+    key: "mcbb-championship",
+    sport: "College Basketball",
+    label: "Men's College Basketball Championship",
+    kalshiEventTicker: "KXMARMAD-26",
+    kalshiUrl: "https://kalshi.com/markets/kxmarmad/march-tournament/kxmarmad-26",
+    polymarketEventSlug: "2026-ncaa-tournament-winner",
+    polymarketUrl: "https://polymarket.com/event/2026-ncaa-tournament-winner",
+  },
+];
+const TEAM_ALIASES = new Map([
+  ["uconn", "connecticut"],
+  ["connecticut", "connecticut"],
+  ["unc", "north carolina"],
+  ["scar", "south carolina"],
+  ["usc", "southern california"],
+  ["ole miss", "mississippi"],
+  ["miami fl", "miami"],
+]);
+const TEAM_SUFFIX_WORDS = new Set([
+  "tigers",
+  "wildcats",
+  "bulls",
+  "bobcats",
+  "musketeers",
+  "panthers",
+  "camels",
+  "huskies",
+  "bears",
+  "bruins",
+  "gamecocks",
+  "sooners",
+  "golden",
+  "eagles",
+  "fighting",
+]);
 
 function toNumber(value, fallback = 0) {
   const num = Number(value);
@@ -86,6 +126,31 @@ function normalizeText(value) {
     .normalize("NFKD")
     .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase();
+}
+
+function normalizeSelectionKey(value) {
+  let normalized = normalizeText(value)
+    .replace(/\b(st)\b/g, "state")
+    .replace(/\buniv\b/g, "university")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  const parts = normalized.split(" ").filter(Boolean);
+  if (parts.length >= 2 && TEAM_SUFFIX_WORDS.has(parts[parts.length - 1])) {
+    parts.pop();
+  }
+  if (parts.length >= 2 && TEAM_SUFFIX_WORDS.has(parts[parts.length - 1])) {
+    parts.pop();
+  }
+  normalized = parts.join(" ").trim() || normalized;
+
+  return TEAM_ALIASES.get(normalized) || normalized;
+}
+
+function normalizeCompareLabel(value) {
+  return String(value || "")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function clampProbability(value) {
@@ -255,9 +320,20 @@ async function fetchPolymarketSportEventPages(baseUrl, tagSlug) {
   return allEvents;
 }
 
-async function fetchPolymarketFeaturedEvent(baseUrl) {
+async function fetchPolymarketCollegeBasketballGameEvents(baseUrl) {
   const payload = await fetchJson(
-    `${baseUrl}/events?slug=${encodeURIComponent(POLYMARKET_FEATURED_EVENT_SLUG)}`,
+    `${baseUrl}/events?active=true&closed=false&limit=500`,
+    {},
+    { retries: 1, delayMs: 500 }
+  );
+
+  const events = Array.isArray(payload) ? payload : [];
+  return events.filter((event) => /^cbb-/i.test(String(event.slug || "")));
+}
+
+async function fetchPolymarketFeaturedEvent(baseUrl, configEntry) {
+  const payload = await fetchJson(
+    `${baseUrl}/events?slug=${encodeURIComponent(configEntry.polymarketEventSlug)}`,
     {},
     { retries: 1, delayMs: 500 }
   );
@@ -284,11 +360,16 @@ async function fetchPolymarketFeaturedEvent(baseUrl) {
         platform: "Polymarket",
         platformKey: "polymarket",
         title: market.question || event.title || market.slug,
-        subtitle: featuredChampionshipLabel(),
-        category: featuredChampionshipLabel(),
-        sport: "College Basketball",
+        subtitle: configEntry.label,
+        category: configEntry.label,
+        sport: configEntry.sport,
         selectionLabel: market.groupItemTitle || teamLabelFromTitle(market.question),
-        url: POLYMARKET_FEATURED_EVENT_URL,
+        selectionKey: normalizeSelectionKey(market.groupItemTitle || teamLabelFromTitle(market.question)),
+        compareGroupType: "championship",
+        compareParentLabel: configEntry.label,
+        compareGroupKey: configEntry.key,
+        compareGroupLabel: configEntry.label,
+        url: configEntry.polymarketUrl,
         yesPrice,
         noPrice: clampProbability(1 - yesPrice),
         lastPrice: yesPrice,
@@ -527,82 +608,178 @@ function groupComparableMarkets(markets) {
 
 async function fetchKalshiMarkets() {
   const baseUrl = config.predictionMarkets.kalshiBaseUrl.replace(/\/$/, "");
-  const payload = await fetchJson(
-    `${baseUrl}/events/${KALSHI_FEATURED_EVENT_TICKER}`,
-    {},
-    { retries: 1, delayMs: 500 }
+  const eventPayloads = await Promise.all(
+    FEATURED_COLLEGE_BASKETBALL_COMPARE_MARKETS.map(async (configEntry) => ({
+      configEntry,
+      payload: await fetchJson(
+        `${baseUrl}/events/${configEntry.kalshiEventTicker}`,
+        {},
+        { retries: 1, delayMs: 500 }
+      ),
+    }))
   );
-  const event = payload?.event || {};
-  const markets = Array.isArray(payload?.markets) ? payload.markets : [];
 
-  return markets
-    .filter((market) => !market.status || market.status === "open" || market.status === "active" || market.status === "initialized")
-    .map((market) => {
-      const yesBid = clampProbability(
-        toNumber(market.yes_bid_dollars) ||
-          toNumber(market.yes_bid) / 100
-      );
-      const yesAsk = clampProbability(
-        toNumber(market.yes_ask_dollars) ||
-          toNumber(market.yes_ask) / 100
-      );
-      const lastPrice = clampProbability(
-        toNumber(market.last_price) / 100 ||
-          toNumber(market.last_price_dollars) ||
-          yesAsk ||
-          yesBid ||
-          0.5
-      );
-      const yesPrice = lastPrice || yesAsk || yesBid || 0.5;
-      const noPrice = clampProbability(1 - yesPrice);
-      const bidSize = Math.max(0, toNumber(market.yes_bid_size) || toNumber(market.yes_bid_size_fp) || 0);
-      const askSize = Math.max(0, toNumber(market.yes_ask_size) || toNumber(market.yes_ask_size_fp) || 0);
-      const liquidityUsd =
+  const championshipMarkets = eventPayloads.flatMap(({ configEntry, payload }) => {
+    const event = payload?.event || {};
+    const markets = Array.isArray(payload?.markets) ? payload.markets : [];
+
+    return markets
+      .filter((market) => !market.status || market.status === "open" || market.status === "active" || market.status === "initialized")
+      .map((market) => {
+        const yesBid = clampProbability(
+          toNumber(market.yes_bid_dollars) ||
+            toNumber(market.yes_bid) / 100
+        );
+        const yesAsk = clampProbability(
+          toNumber(market.yes_ask_dollars) ||
+            toNumber(market.yes_ask) / 100
+        );
+        const lastPrice = clampProbability(
+          toNumber(market.last_price) / 100 ||
+            toNumber(market.last_price_dollars) ||
+            yesAsk ||
+            yesBid ||
+            0.5
+        );
+        const yesPrice = lastPrice || yesAsk || yesBid || 0.5;
+        const noPrice = clampProbability(1 - yesPrice);
+        const bidSize = Math.max(0, toNumber(market.yes_bid_size) || toNumber(market.yes_bid_size_fp) || 0);
+        const askSize = Math.max(0, toNumber(market.yes_ask_size) || toNumber(market.yes_ask_size_fp) || 0);
+        const liquidityUsd =
+          toNumber(market.liquidity_dollars) ||
+          toNumber(market.liquidity) ||
+          toNumber(event.liquidity_dollars) ||
+          toNumber(event.liquidity);
+        const volume24hUsd =
+          toNumber(market.volume_24h_dollars) ||
+          toNumber(market.volume_24h) ||
+          toNumber(market.volume_24h_fp) ||
+          toNumber(market.volume) ||
+          0;
+        const openInterestUsd =
+          toNumber(market.open_interest_dollars) ||
+          toNumber(market.open_interest) ||
+          toNumber(market.open_interest_fp) ||
+          0;
+        const selectionLabel = teamLabelFromTitle(market.title);
+
+        return {
+          id: `kalshi-${market.ticker}`,
+          platform: "Kalshi",
+          platformKey: "kalshi",
+          title: market.title || market.subtitle || market.ticker,
+          subtitle: configEntry.label,
+          category: configEntry.label,
+          sport: configEntry.sport,
+          selectionLabel,
+          selectionKey: normalizeSelectionKey(selectionLabel),
+          compareGroupType: "championship",
+          compareParentLabel: configEntry.label,
+          compareGroupKey: configEntry.key,
+          compareGroupLabel: configEntry.label,
+          components: [],
+          url: configEntry.kalshiUrl,
+          yesPrice,
+          noPrice,
+          lastPrice,
+          liquidityUsd,
+          volume24hUsd,
+          openInterestUsd,
+          expiresAt: market.expiration_time || market.close_time || event.settlement_timer || null,
+          yesBook: {
+            bids: yesBid ? [{ price: yesBid, size: bidSize }] : [],
+            asks: yesAsk ? [{ price: yesAsk, size: askSize }] : [],
+          },
+        };
+      });
+  });
+
+  const gameSeriesTickers = ["KXNCAAMBGAME", "KXNCAAWBGAME"];
+  const gameMarketPayloads = await Promise.all(
+    gameSeriesTickers.map((seriesTicker) =>
+      fetchJson(
+        `${baseUrl}/markets?limit=100&status=open&series_ticker=${encodeURIComponent(seriesTicker)}`,
+        {},
+        { retries: 1, delayMs: 500 }
+      )
+    )
+  );
+
+  const gameMarkets = gameMarketPayloads
+    .flatMap((payload) => (Array.isArray(payload?.markets) ? payload.markets : []))
+    .filter((market) => String(market.title || "").includes("Winner"));
+
+  const normalizedGameMarkets = gameMarkets.map((market) => {
+    const yesBid = clampProbability(
+      toNumber(market.yes_bid_dollars) ||
+        toNumber(market.yes_bid) / 100
+    );
+    const yesAsk = clampProbability(
+      toNumber(market.yes_ask_dollars) ||
+        toNumber(market.yes_ask) / 100
+    );
+    const lastPrice = clampProbability(
+      toNumber(market.last_price) / 100 ||
+        toNumber(market.last_price_dollars) ||
+        yesAsk ||
+        yesBid ||
+        0.5
+    );
+    const yesPrice = lastPrice || yesAsk || yesBid || 0.5;
+    const selectionLabel = market.yes_sub_title || teamLabelFromTitle(market.title);
+    const compareParentLabel = normalizeCompareLabel(market.title || "College Basketball Game Winner");
+
+    return {
+      id: `kalshi-${market.ticker}`,
+      platform: "Kalshi",
+      platformKey: "kalshi",
+      title: market.title || market.subtitle || market.ticker,
+      subtitle: compareParentLabel,
+      category: "Game Winner",
+      sport: "College Basketball",
+      selectionLabel,
+      selectionKey: normalizeSelectionKey(selectionLabel),
+      compareGroupType: "game-winner",
+      compareParentLabel,
+      components: [],
+      url: `${config.predictionMarkets.kalshiWebBaseUrl.replace(/\/$/, "")}/market/${market.ticker}`,
+      yesPrice,
+      noPrice: clampProbability(1 - yesPrice),
+      lastPrice,
+      liquidityUsd:
         toNumber(market.liquidity_dollars) ||
-        toNumber(market.liquidity) ||
-        toNumber(event.liquidity_dollars) ||
-        toNumber(event.liquidity);
-      const volume24hUsd =
+        toNumber(market.liquidity),
+      volume24hUsd:
         toNumber(market.volume_24h_dollars) ||
         toNumber(market.volume_24h) ||
         toNumber(market.volume_24h_fp) ||
         toNumber(market.volume) ||
-        0;
-      const openInterestUsd =
+        0,
+      openInterestUsd:
         toNumber(market.open_interest_dollars) ||
         toNumber(market.open_interest) ||
         toNumber(market.open_interest_fp) ||
-        0;
+        0,
+      expiresAt: market.expiration_time || market.close_time || null,
+      yesBook: {
+        bids: yesBid ? [{ price: yesBid, size: Math.max(0, toNumber(market.yes_bid_size) || toNumber(market.yes_bid_size_fp) || 0) }] : [],
+        asks: yesAsk ? [{ price: yesAsk, size: Math.max(0, toNumber(market.yes_ask_size) || toNumber(market.yes_ask_size_fp) || 0) }] : [],
+      },
+    };
+  });
 
-      return {
-        id: `kalshi-${market.ticker}`,
-        platform: "Kalshi",
-        platformKey: "kalshi",
-        title: market.title || market.subtitle || market.ticker,
-        subtitle: "Women's College Basketball Championship",
-        category: "Women's College Basketball Championship",
-        sport: "College Basketball",
-        selectionLabel: teamLabelFromTitle(market.title),
-        components: [],
-        url: KALSHI_FEATURED_EVENT_URL,
-        yesPrice,
-        noPrice,
-        lastPrice,
-        liquidityUsd,
-        volume24hUsd,
-        openInterestUsd,
-        expiresAt: market.expiration_time || market.close_time || event.settlement_timer || null,
-        yesBook: {
-          bids: yesBid ? [{ price: yesBid, size: bidSize }] : [],
-          asks: yesAsk ? [{ price: yesAsk, size: askSize }] : [],
-        },
-      };
-    });
+  return [...championshipMarkets, ...normalizedGameMarkets];
 }
 
 async function fetchPolymarketMarkets() {
   const gammaBaseUrl = config.predictionMarkets.polymarketGammaBaseUrl.replace(/\/$/, "");
-  const featuredMarkets = await fetchPolymarketFeaturedEvent(gammaBaseUrl);
+  const featuredGroups = await Promise.all(
+    FEATURED_COLLEGE_BASKETBALL_COMPARE_MARKETS.map((configEntry) =>
+      fetchPolymarketFeaturedEvent(gammaBaseUrl, configEntry)
+    )
+  );
+  const featuredMarkets = featuredGroups.flat();
+  const collegeBasketballGameEvents = await fetchPolymarketCollegeBasketballGameEvents(gammaBaseUrl);
   const eventGroups = await Promise.all(
     POLYMARKET_SPORT_TAGS.map(async ({ tagSlug, sport }) => ({
       sport,
@@ -661,8 +838,58 @@ async function fetchPolymarketMarkets() {
     )
     .filter((market) => market.sport);
 
+  const collegeBasketballGameMarkets = collegeBasketballGameEvents.flatMap((event) =>
+    (Array.isArray(event.markets) ? event.markets : [])
+      .filter((market) => market.active && !market.closed)
+      .flatMap((market) => {
+        const outcomes = JSON.parse(market.outcomes || "[]");
+        const outcomePrices = JSON.parse(market.outcomePrices || "[]");
+        const compareParentLabel = normalizeCompareLabel(`${event.title} Winner`);
+        if (!Array.isArray(outcomes) || !Array.isArray(outcomePrices) || !outcomes.length) {
+          return [];
+        }
+
+        return outcomes.map((selectionLabel, index) => {
+          const yesPrice = clampProbability(toNumber(outcomePrices[index]));
+
+          return {
+            id: `polymarket-${market.slug || market.id}-${index}`,
+            platform: "Polymarket",
+            platformKey: "polymarket",
+            title: market.question || event.title || market.slug,
+            subtitle: compareParentLabel,
+            category: "Game Winner",
+            sport: "College Basketball",
+            selectionLabel,
+            selectionKey: normalizeSelectionKey(selectionLabel),
+            compareGroupType: "game-winner",
+            compareParentLabel,
+            url: `${config.predictionMarkets.polymarketWebBaseUrl.replace(/\/$/, "")}/event/${event.slug || market.slug || market.id}`,
+            yesPrice,
+            noPrice: clampProbability(1 - yesPrice),
+            lastPrice: yesPrice,
+            liquidityUsd:
+              toNumber(market.liquidityClob) ||
+              toNumber(market.liquidityNum) ||
+              toNumber(event.liquidityClob) ||
+              toNumber(event.liquidity),
+            volume24hUsd:
+              toNumber(market.volume24hrClob) ||
+              toNumber(market.volume24hr) ||
+              toNumber(event.volume24hr),
+            openInterestUsd: toNumber(event.openInterest) || toNumber(market.volumeNum),
+            expiresAt: market.eventStartTime || market.gameStartTime || event.startDate || event.endDate || market.endDate || null,
+            yesBook: {
+              bids: [],
+              asks: [],
+            },
+          };
+        });
+      })
+  );
+
   const deduped = new Map();
-  for (const market of [...generalMarkets, ...featuredMarkets]) {
+  for (const market of [...generalMarkets, ...featuredMarkets, ...collegeBasketballGameMarkets]) {
     deduped.set(market.id, market);
   }
 
