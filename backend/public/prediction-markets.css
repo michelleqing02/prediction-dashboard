@@ -390,7 +390,7 @@ body[data-theme="pink"] .stamp {
 }
 
 .trader-board {
-  min-width: 1240px;
+  min-width: 1500px;
 }
 
 .board-row {
@@ -400,7 +400,7 @@ body[data-theme="pink"] .stamp {
 }
 
 .board-row.compare-board {
-  grid-template-columns: 360px 140px minmax(240px, 1fr) minmax(240px, 1fr);
+  grid-template-columns: 320px 120px minmax(220px, 1fr) minmax(220px, 1fr) minmax(220px, 1fr);
 }
 
 .board-row:not(.board-header) {

@@ -25,6 +25,7 @@ const VENUES = [
   { key: "compare", label: "Compare" },
   { key: "kalshi", label: "Kalshi" },
   { key: "polymarket", label: "Polymarket" },
+  { key: "fanduel", label: "FanDuel" },
 ];
 
 const SPORT_ORDER = ["NHL", "College Basketball"];
@@ -210,6 +211,12 @@ function liquidityValueForMarket(market) {
   return Number(market?.displayLiquidityUsd || market?.liquidityUsd || 0);
 }
 
+function venueMetricLabel(venueKey) {
+  if (venueKey === "kalshi") return "Visible depth";
+  if (venueKey === "fanduel") return "Listed lines";
+  return "Liquidity";
+}
+
 function selectedVenueMarket() {
   const markets = venueMarketsFromDashboard(state.dashboard || { markets: [] });
   return markets.find((market) => market.id === state.selectedMarketId) || markets[0] || null;
@@ -340,6 +347,7 @@ function buildCompareGroups(dashboard) {
         expiresAt: market.expiresAt || null,
         kalshi: null,
         polymarket: null,
+        fanduel: null,
       });
     }
 
@@ -349,6 +357,9 @@ function buildCompareGroups(dashboard) {
     }
     if (market.platformKey === "polymarket") {
       row.polymarket = market;
+    }
+    if (market.platformKey === "fanduel") {
+      row.fanduel = market;
     }
     row.selection = row.selection || market.compareRowLabel || market.selectionLabel || market.title || market.selectionKey;
     row.expiresAt = row.expiresAt || market.expiresAt || null;
@@ -527,6 +538,7 @@ function renderDashboard() {
   const selectedMarket = showCompareBoard ? selectedMarketFromDashboard(dashboard) : selectedVenueMarket();
   const compareKalshiMarkets = showCompareBoard ? compareGroups.flatMap((group) => group.rows.map((row) => row.kalshi).filter(Boolean)) : [];
   const comparePolymarketMarkets = showCompareBoard ? compareGroups.flatMap((group) => group.rows.map((row) => row.polymarket).filter(Boolean)) : [];
+  const compareFanduelMarkets = showCompareBoard ? compareGroups.flatMap((group) => group.rows.map((row) => row.fanduel).filter(Boolean)) : [];
   const compareRowCount = showCompareBoard ? compareGroups.reduce((sum, group) => sum + group.rows.length, 0) : 0;
 
   updatedAtEl.textContent = dashboard.generatedAt
@@ -534,7 +546,7 @@ function renderDashboard() {
     : "--";
   sourceModeEl.textContent = venueModeLabel(dashboard.sourceStatus);
   boardTitleEl.textContent = showCompareBoard
-    ? `${sportLabel(state.selectedSport)} Compare | Kalshi vs Polymarket`
+    ? `${sportLabel(state.selectedSport)} Compare | Kalshi vs Polymarket vs FanDuel`
     : `${venue.label} board${state.selectedSport ? ` | ${sportLabel(state.selectedSport)}` : ""}`;
   categorySelect.disabled = showCompareBoard;
   searchInput.disabled = false;
@@ -544,10 +556,11 @@ function renderDashboard() {
         metricTile("Selections", compareRowCount),
         metricTile("Kalshi", compareKalshiMarkets.length),
         metricTile("Polymarket", comparePolymarketMarkets.length),
+        metricTile("FanDuel", compareFanduelMarkets.length),
         metricTile("Kalshi Depth", formatCurrency(compareKalshiMarkets.reduce((sum, market) => sum + liquidityValueForMarket(market), 0))),
         metricTile("Poly Liq", formatCurrency(comparePolymarketMarkets.reduce((sum, market) => sum + liquidityValueForMarket(market), 0))),
         metricTile("24h Vol", formatCurrency(
-          [...compareKalshiMarkets, ...comparePolymarketMarkets].reduce((sum, market) => sum + Number(market.volume24hUsd || 0), 0)
+          [...compareKalshiMarkets, ...comparePolymarketMarkets, ...compareFanduelMarkets].reduce((sum, market) => sum + Number(market.volume24hUsd || 0), 0)
         )),
       ].join("")
     : [
@@ -556,8 +569,10 @@ function renderDashboard() {
         metricTile("Venue", venue.label),
         metricTile("Mode", venueStatus.mode || "--"),
         metricTile(
-          venue.key === "kalshi" ? "Visible depth" : "Liquidity",
-          formatCurrency(venueMarkets.reduce((sum, market) => sum + liquidityValueForMarket(market), 0))
+          venueMetricLabel(venue.key),
+          venue.key === "fanduel"
+            ? formatCompactNumber(venueMarkets.length)
+            : formatCurrency(venueMarkets.reduce((sum, market) => sum + liquidityValueForMarket(market), 0))
         ),
         metricTile(
           "24h Vol",
@@ -567,7 +582,7 @@ function renderDashboard() {
 
   renderAlerts(
     showCompareBoard
-      ? (dashboard.alerts || []).filter((alert) => ["kalshi", "polymarket"].includes(String(alert.platform || "").toLowerCase()))
+      ? (dashboard.alerts || []).filter((alert) => ["kalshi", "polymarket", "fanduel"].includes(String(alert.platform || "").toLowerCase()))
       : (dashboard.alerts || []).filter((alert) => alert.platform.toLowerCase() === venue.label.toLowerCase())
   );
   if (showCompareBoard) {
@@ -603,6 +618,9 @@ function renderAlerts(alerts) {
 }
 
 function renderBoard(groups, venue, venueStatus) {
+  const venueSubhead = venue.key === "fanduel"
+    ? "Odds | Line | Book | Update"
+    : "YES | Bid/Ask | Spr | Liq | 24h Vol";
   const header = `
     <div class="board-row board-header single-venue">
       <div class="market-col sticky-left">Market</div>
@@ -610,7 +628,7 @@ function renderBoard(groups, venue, venueStatus) {
       <div class="meta-col">Type</div>
       <div class="venue-col">
         <div class="venue-head">${venue.label}</div>
-        <div class="venue-subhead">YES | Bid/Ask | Spr | Liq | 24h Vol</div>
+        <div class="venue-subhead">${venueSubhead}</div>
       </div>
     </div>
   `;
@@ -661,6 +679,10 @@ function renderChampionshipCompareBoard(groups) {
         <div class="venue-head">Polymarket</div>
         <div class="venue-subhead">YES | Bid/Ask | Spr | Liq | 1h</div>
       </div>
+      <div class="venue-col">
+        <div class="venue-head">FanDuel</div>
+        <div class="venue-subhead">Odds | Line | Book</div>
+      </div>
     </div>
   `;
 
@@ -680,6 +702,10 @@ function renderChampionshipCompareBoard(groups) {
         <button type="button" class="group-row-button venue-col" data-compare-group-id="${escapeHtml(group.id)}">
           <strong>${escapeHtml(formatCurrency(group.rows.reduce((sum, row) => sum + liquidityValueForMarket(row.polymarket), 0)))}</strong>
           <span class="metric-inline">Reported liquidity</span>
+        </button>
+        <button type="button" class="group-row-button venue-col" data-compare-group-id="${escapeHtml(group.id)}">
+          <strong>${escapeHtml(formatCompactNumber(group.rows.filter((row) => row.fanduel).length))}</strong>
+          <span class="metric-inline">FanDuel lines</span>
         </button>
       </div>
       ${state.expandedCompareGroupIds.includes(group.id) ? group.rows.map((row) => renderCompareRow(row, group.label)).join("") : ""}
@@ -717,18 +743,27 @@ function compareVenueSignals(row) {
   const signals = {
     kalshi: [],
     polymarket: [],
+    fanduel: [],
   };
 
-  const kalshiAsk = row?.kalshi?.topAsk?.price;
-  const polymarketAsk = row?.polymarket?.topAsk?.price;
-  if (Number.isFinite(kalshiAsk) && Number.isFinite(polymarketAsk)) {
-    if (kalshiAsk + 0.0001 < polymarketAsk) signals.kalshi.push("best-price");
-    if (polymarketAsk + 0.0001 < kalshiAsk) signals.polymarket.push("best-price");
+  const offerPrices = {
+    kalshi: Number.isFinite(row?.kalshi?.topAsk?.price) ? Number(row.kalshi.topAsk.price) : null,
+    polymarket: Number.isFinite(row?.polymarket?.topAsk?.price) ? Number(row.polymarket.topAsk.price) : null,
+    fanduel: Number.isFinite(row?.fanduel?.yesPrice) ? Number(row.fanduel.yesPrice) : null,
+  };
+  const liveOffers = Object.entries(offerPrices).filter(([, price]) => Number.isFinite(price));
+  if (liveOffers.length) {
+    const bestPrice = Math.min(...liveOffers.map(([, price]) => price));
+    for (const [key, price] of liveOffers) {
+      if (Math.abs(price - bestPrice) < 0.0001) {
+        signals[key].push("best-price");
+      }
+    }
   }
 
-  for (const [key, market] of Object.entries({ kalshi: row?.kalshi, polymarket: row?.polymarket })) {
+  for (const [key, market] of Object.entries({ kalshi: row?.kalshi, polymarket: row?.polymarket, fanduel: row?.fanduel })) {
     if (!market) continue;
-    if (!hasCompleteQuote(market)) signals[key].push("incomplete");
+    if (key !== "fanduel" && !hasCompleteQuote(market)) signals[key].push("incomplete");
     if (Number(market.spread || 0) >= 0.03) signals[key].push("wide-spread");
     if (Math.abs(Number(market.priceChange1h || 0)) >= 0.03) signals[key].push("recent-move");
   }
@@ -739,6 +774,29 @@ function compareVenueSignals(row) {
 function renderVenueCell(market, venueKey, flags = []) {
   if (!market) {
     return `<div class="venue-col venue-empty"><span class="metric-inline">No live row</span></div>`;
+  }
+
+  if (venueKey === "fanduel") {
+    const selected = market.id === state.selectedMarketId ? "venue-selected" : "";
+    const cellClasses = [selected, ...flags.map((flag) => `venue-${flag}`)].filter(Boolean).join(" ");
+    const flagLabels = [];
+    if (flags.includes("best-price")) flagLabels.push("Best price");
+    if (flags.includes("recent-move")) flagLabels.push("Moving");
+
+    const flagMarkup = flagLabels.length
+      ? `<span class="metric-inline venue-flags">${escapeHtml(flagLabels.join(" | "))}</span>`
+      : "";
+
+    return `
+      <button type="button" class="board-row-button venue-col ${cellClasses}" data-market-id="${escapeHtml(market.id)}">
+        <strong>${escapeHtml(formatPrice(market.yesPrice))}</strong>
+        <span class="bidask">Am ${escapeHtml(Number.isFinite(market.americanOdds) ? String(market.americanOdds > 0 ? `+${market.americanOdds}` : market.americanOdds) : "--")}</span>
+        <span class="metric-inline">Line ${escapeHtml(market.line == null ? "--" : String(market.line))}</span>
+        <span class="metric-inline">Book fixed odds</span>
+        <span class="metric-inline">Upd ${escapeHtml(formatDateTimeShort(market.pulledAt))}</span>
+        ${flagMarkup}
+      </button>
+    `;
   }
 
   const selected = market.id === state.selectedMarketId ? "venue-selected" : "";
@@ -823,6 +881,7 @@ function renderCompareRow(row, groupLabel) {
       <div class="meta-col">${escapeHtml(formatDateTimeShort(row.expiresAt))}</div>
       ${renderVenueCell(row.kalshi, "kalshi", venueSignals.kalshi)}
       ${renderVenueCell(row.polymarket, "polymarket", venueSignals.polymarket)}
+      ${renderVenueCell(row.fanduel, "fanduel", venueSignals.fanduel)}
     </div>
   `;
 }
@@ -832,6 +891,10 @@ function renderGroupRow(group) {
   const firstMarket = group.markets[0];
   const selectionText = `${group.markets.length} selection${group.markets.length === 1 ? "" : "s"}`;
   const typeText = primaryTypeForGroup(group);
+  const groupMetricValue = group.platformKey === "fanduel"
+    ? `${formatCompactNumber(group.markets.length)} lines`
+    : formatCurrency(group.totalLiquidityUsd);
+  const groupMetricLabel = group.platformKey === "fanduel" ? "Fixed odds" : "Top";
   const childMarkup =
     expanded &&
     group.platformKey === "kalshi" &&
@@ -854,9 +917,9 @@ function renderGroupRow(group) {
         <div class="meta-col">${escapeHtml(formatDateTimeShort(firstMarket?.expiresAt))}</div>
         <div class="meta-col">${escapeHtml(typeText)}</div>
         <button type="button" class="group-row-button venue-col" data-group-id="${escapeHtml(group.id)}">
-          <strong>${escapeHtml(formatCurrency(group.totalLiquidityUsd))}</strong>
+          <strong>${escapeHtml(groupMetricValue)}</strong>
           <span class="bidask">${escapeHtml(formatCompactNumber(group.markets.length))} selections</span>
-          <span class="metric-inline">Top ${escapeHtml(firstMarket.category || "--")}</span>
+          <span class="metric-inline">${escapeHtml(groupMetricLabel)} ${escapeHtml(firstMarket.category || "--")}</span>
           <span class="metric-inline">1h ${escapeHtml(formatDelta(firstMarket.priceChange1h || 0))}</span>
         </button>
       </div>
@@ -870,6 +933,27 @@ function renderBoardRow(market) {
   const subText = market.sport
     ? `${market.sport} | ${market.subtitle || market.category || "--"}`
     : market.subtitle || market.category || "--";
+
+  if (market.platformKey === "fanduel") {
+    return `
+      <div class="board-row single-venue child-row ${selected}">
+        <button type="button" class="board-row-button market-col sticky-left" data-market-id="${escapeHtml(market.id)}">
+          <strong>${escapeHtml(market.title)}</strong>
+          <small>${escapeHtml(subText)}</small>
+          <small>Fixed odds book row</small>
+        </button>
+        <div class="meta-col">${escapeHtml(formatDateTimeShort(market.expiresAt))}</div>
+        <div class="meta-col">${escapeHtml(market.category || "--")}</div>
+        <button type="button" class="board-row-button venue-col ${selected ? "venue-selected" : ""}" data-market-id="${escapeHtml(market.id)}">
+          <strong>${escapeHtml(formatPrice(market.yesPrice))}</strong>
+          <span class="bidask">Am ${escapeHtml(Number.isFinite(market.americanOdds) ? String(market.americanOdds > 0 ? `+${market.americanOdds}` : market.americanOdds) : "--")}</span>
+          <span class="metric-inline">Line ${escapeHtml(market.line == null ? "--" : String(market.line))}</span>
+          <span class="metric-inline">Book fixed odds</span>
+          <span class="metric-inline">Upd ${escapeHtml(formatDateTimeShort(market.pulledAt))}</span>
+        </button>
+      </div>
+    `;
+  }
 
   return `
     <div class="board-row single-venue child-row ${selected}">
@@ -961,6 +1045,7 @@ function renderDetail(market) {
   quoteBreakdownEl.innerHTML = [
     detailListRow("YES last", formatPrice(market.yesPrice)),
     detailListRow("NO last", formatPrice(market.noPrice)),
+    detailListRow("American odds", Number.isFinite(market.americanOdds) ? `${market.americanOdds > 0 ? "+" : ""}${market.americanOdds}` : "--"),
     detailListRow("YES bid", formatPrice(market.topBid?.price)),
     detailListRow("YES ask", formatPrice(market.topAsk?.price)),
     detailListRow("Spread", formatSpread(market.spread)),
@@ -977,6 +1062,7 @@ function renderDetail(market) {
     detailListRow("Venue", market.platform),
     detailListRow("Sport", market.sport || "--"),
     detailListRow("Market type", market.category || "--"),
+    detailListRow("Line", market.line == null ? "--" : String(market.line)),
     detailListRow("Subtitle", market.subtitle || "--"),
     detailListRow("Selection id", market.id || "--"),
     detailListRow("Closes", formatDateTimeShort(market.expiresAt)),

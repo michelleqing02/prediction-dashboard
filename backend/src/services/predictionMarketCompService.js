@@ -1,5 +1,6 @@
 const config = require("../config");
 const { fetchJson } = require("../utils/http");
+const { impliedProbability } = require("../utils/odds");
 const mockData = require("../adapters/predictionMarketMockData");
 
 let snapshotCache = {
@@ -335,6 +336,13 @@ function currentEasternDateParts(now = new Date()) {
 function currentEasternYmd(now = new Date()) {
   const { year, month, day } = currentEasternDateParts(now);
   return `${year}-${month}-${day}`;
+}
+
+function easternYmd(value) {
+  if (!value) return "";
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  return currentEasternYmd(date);
 }
 
 function currentKalshiDateCode(now = new Date()) {
@@ -841,6 +849,106 @@ async function fetchPolymarketTodayNhlMarkets(baseUrl) {
   });
 }
 
+function sportsbookSelectionLabel(marketKey, selectionName, event) {
+  if (marketKey === "totals") return selectionName;
+  if (selectionName === event.home_team) return event.home_team;
+  if (selectionName === event.away_team) return event.away_team;
+  return selectionName;
+}
+
+function sportsbookCompareRowKey(marketKey, selectionName, event, point) {
+  const normalizedSelection = normalizeSelectionKey(sportsbookSelectionLabel(marketKey, selectionName, event));
+  if (marketKey === "totals") return `total|${point ?? ""}|${normalizedSelection}`;
+  if (marketKey === "spreads") return `spread|${point ?? ""}|${normalizedSelection}`;
+  return `moneyline|${normalizedSelection}`;
+}
+
+function sportsbookCompareRowLabel(marketKey, selectionName, point) {
+  if (marketKey === "totals") return `Total ${point ?? "--"} | ${selectionName}`;
+  if (marketKey === "spreads") return `Spread ${point ?? "--"} | ${selectionName}`;
+  return `Moneyline | ${selectionName}`;
+}
+
+async function fetchFanduelNhlMarkets() {
+  const url = new URL(`${config.app.oddsApiBaseUrl}/sports/icehockey_nhl/odds`);
+  url.searchParams.set("apiKey", config.app.oddsApiKey);
+  url.searchParams.set("regions", "us");
+  url.searchParams.set("markets", "h2h,spreads,totals");
+  url.searchParams.set("oddsFormat", "american");
+  url.searchParams.set("bookmakers", "fanduel");
+
+  const payload = await fetchJson(
+    url.toString(),
+    {
+      headers: {
+        Accept: "application/json",
+      },
+    },
+    { retries: 1, delayMs: 500 }
+  );
+
+  const todayKey = currentEasternYmd();
+
+  return (Array.isArray(payload) ? payload : [])
+    .filter((event) => easternYmd(event.commence_time) === todayKey)
+    .flatMap((event) => {
+      const bookmaker = Array.isArray(event.bookmakers)
+        ? event.bookmakers.find((entry) => entry.key === "fanduel")
+        : null;
+      const teams = [event.away_team, event.home_team].filter(Boolean);
+      const compareGameKey = teams.length === 2 ? gameKeyFromTeams("NHL", todayKey, teams) : null;
+
+      return (bookmaker?.markets || []).flatMap((market) => {
+        const marketKey = String(market.key || "");
+        const category =
+          marketKey === "h2h" ? "Moneyline" :
+          marketKey === "spreads" ? "Spread" :
+          marketKey === "totals" ? "Total" :
+          null;
+
+        if (!category) return [];
+
+        return (market.outcomes || []).map((selection, index) => {
+          const yesPrice = clampProbability(impliedProbability(selection.price));
+          const selectionLabel = sportsbookSelectionLabel(marketKey, selection.name, event);
+          const compareParentLabel = normalizeCompareLabel(`${event.away_team} @ ${event.home_team}`);
+
+          return {
+            id: `fanduel-${event.id}-${marketKey}-${index}-${String(selection.name || "").replace(/[^a-z0-9]+/gi, "-").toLowerCase()}`,
+            platform: "FanDuel",
+            platformKey: "fanduel",
+            title: `${compareParentLabel} ${category}`,
+            subtitle: compareParentLabel,
+            category,
+            sport: "NHL",
+            selectionLabel,
+            selectionKey: normalizeSelectionKey(selectionLabel),
+            compareGroupType: "nhl-game",
+            compareParentLabel,
+            compareGameKey,
+            compareRowKey: sportsbookCompareRowKey(marketKey, selection.name, event, selection.point),
+            compareRowLabel: sportsbookCompareRowLabel(marketKey, selectionLabel, selection.point),
+            url: config.books?.fanduel?.publicUrl || "",
+            yesPrice,
+            noPrice: clampProbability(1 - yesPrice),
+            lastPrice: yesPrice,
+            liquidityUsd: 0,
+            volume24hUsd: 0,
+            openInterestUsd: 0,
+            expiresAt: event.commence_time || null,
+            line: selection.point ?? null,
+            americanOdds: Number(selection.price),
+            pulledAt: bookmaker?.last_update || market.last_update || null,
+            yesBook: {
+              bids: [],
+              asks: [],
+            },
+          };
+        });
+      });
+    });
+}
+
 function computeDepthMetrics(book) {
   const bids = Array.isArray(book?.bids) ? [...book.bids] : [];
   const asks = Array.isArray(book?.asks) ? [...book.asks] : [];
@@ -972,6 +1080,7 @@ function normalizeMarket(rawMarket) {
     displayLiquidityUsd,
     displayLiquidityChange1h,
     liquidityLabel:
+      rawMarket.liquidityLabel ||
       rawMarket.platformKey === "kalshi" && toNumber(rawMarket.liquidityUsd) <= 0
         ? "Visible depth"
         : "Reported liquidity",
@@ -1001,7 +1110,20 @@ function applyFilters(markets, filters) {
     if (filters.category && market.category.toLowerCase() !== filters.category.toLowerCase()) return false;
     if (filters.sport && (market.sport || "").toLowerCase() !== filters.sport.toLowerCase()) return false;
     if (filters.search) {
-      const haystack = `${market.title} ${market.subtitle} ${market.category} ${market.sport || ""}`.toLowerCase();
+      const haystack = [
+        market.title,
+        market.subtitle,
+        market.category,
+        market.sport || "",
+        market.selectionLabel || "",
+        market.compareParentLabel || "",
+        market.compareGroupLabel || "",
+        market.compareRowLabel || "",
+        market.selectionKey || "",
+        market.line == null ? "" : String(market.line),
+      ]
+        .join(" ")
+        .toLowerCase();
       if (!haystack.includes(filters.search.toLowerCase())) return false;
     }
     return true;
@@ -1352,12 +1474,13 @@ async function loadSource(sourceName, loader, fallback) {
 
 async function buildDashboardPayload() {
   const now = Date.now();
-  const [kalshiSource, polymarketSource] = await Promise.all([
+  const [kalshiSource, polymarketSource, fanduelSource] = await Promise.all([
     loadSource("kalshi", fetchKalshiMarkets, mockData.kalshi),
     loadSource("polymarket", fetchPolymarketMarkets, mockData.polymarket),
+    loadSource("fanduel", fetchFanduelNhlMarkets, []),
   ]);
 
-  const normalizedMarkets = [...kalshiSource.markets, ...polymarketSource.markets]
+  const normalizedMarkets = [...kalshiSource.markets, ...polymarketSource.markets, ...fanduelSource.markets]
     .map(normalizeMarket)
     .filter((market) => isActiveMarket(market, now))
     .sort((a, b) => b.liquidityUsd - a.liquidityUsd);
@@ -1395,6 +1518,7 @@ async function buildDashboardPayload() {
     sourceStatus: {
       kalshi: { mode: kalshiSource.mode, error: kalshiSource.error },
       polymarket: { mode: polymarketSource.mode, error: polymarketSource.error },
+      fanduel: { mode: fanduelSource.mode, error: fanduelSource.error },
     },
     categories,
     sports,
