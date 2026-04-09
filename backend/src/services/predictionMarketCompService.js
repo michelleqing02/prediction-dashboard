@@ -68,6 +68,7 @@ const SPORT_KEYWORDS = {
 
 const POLYMARKET_SPORT_TAGS = [
   { tagSlug: "ncaab", sport: "College Basketball" },
+  { tagSlug: "nhl", sport: "NHL" },
 ];
 const FEATURED_COLLEGE_BASKETBALL_COMPARE_MARKETS = [
   {
@@ -117,6 +118,101 @@ const TEAM_ALIASES = new Map([
   ["usc", "southern california"],
   ["ole miss", "mississippi"],
   ["miami fl", "miami"],
+  ["maple leafs", "toronto maple leafs"],
+  ["tor maple leafs", "toronto maple leafs"],
+  ["islanders", "new york islanders"],
+  ["nyi islanders", "new york islanders"],
+  ["senators", "ottawa senators"],
+  ["ott senators", "ottawa senators"],
+  ["panthers", "florida panthers"],
+  ["fla panthers", "florida panthers"],
+  ["penguins", "pittsburgh penguins"],
+  ["pit penguins", "pittsburgh penguins"],
+  ["devils", "new jersey devils"],
+  ["nj devils", "new jersey devils"],
+  ["lightning", "tampa bay lightning"],
+  ["tb lightning", "tampa bay lightning"],
+  ["canadiens", "montreal canadiens"],
+  ["mtl canadiens", "montreal canadiens"],
+  ["flyers", "philadelphia flyers"],
+  ["phi flyers", "philadelphia flyers"],
+  ["red wings", "detroit red wings"],
+  ["det red wings", "detroit red wings"],
+  ["blue jackets", "columbus blue jackets"],
+  ["cbj blue jackets", "columbus blue jackets"],
+  ["sabres", "buffalo sabres"],
+  ["buf sabres", "buffalo sabres"],
+  ["jets", "winnipeg jets"],
+  ["wpg jets", "winnipeg jets"],
+  ["blues", "st. louis blues"],
+  ["stl blues", "st. louis blues"],
+  ["wild", "minnesota wild"],
+  ["min wild", "minnesota wild"],
+  ["stars", "dallas stars"],
+  ["dal stars", "dallas stars"],
+  ["hurricanes", "carolina hurricanes"],
+  ["car hurricanes", "carolina hurricanes"],
+  ["blackhawks", "chicago blackhawks"],
+  ["chi blackhawks", "chicago blackhawks"],
+  ["predators", "nashville predators"],
+  ["nsh predators", "nashville predators"],
+  ["utah", "utah mammoth"],
+  ["uta mammoth", "utah mammoth"],
+  ["flames", "calgary flames"],
+  ["cgy flames", "calgary flames"],
+  ["avalanche", "colorado avalanche"],
+  ["col avalanche", "colorado avalanche"],
+  ["golden knights", "vegas golden knights"],
+  ["vgk golden knights", "vegas golden knights"],
+  ["kraken", "seattle kraken"],
+  ["sea kraken", "seattle kraken"],
+  ["sharks", "san jose sharks"],
+  ["sj sharks", "san jose sharks"],
+  ["ducks", "anaheim ducks"],
+  ["ana ducks", "anaheim ducks"],
+  ["canucks", "vancouver canucks"],
+  ["van canucks", "vancouver canucks"],
+  ["kings", "los angeles kings"],
+  ["la kings", "los angeles kings"],
+]);
+const TEAM_CODE_PREFIXES = new Set([
+  "nyi", "tor", "ott", "fla", "pit", "nj", "tb", "mtl", "phi", "det", "cbj", "buf", "wpg", "stl",
+  "min", "dal", "car", "chi", "nsh", "uta", "cgy", "col", "vgk", "sea", "sj", "ana", "van", "la",
+  "edm", "wsh", "bos", "nyr", "fla", "mon",
+]);
+const NHL_TEAM_CODES = new Map([
+  ["ANA", "anaheim ducks"],
+  ["BOS", "boston bruins"],
+  ["BUF", "buffalo sabres"],
+  ["CAR", "carolina hurricanes"],
+  ["CBJ", "columbus blue jackets"],
+  ["CGY", "calgary flames"],
+  ["CHI", "chicago blackhawks"],
+  ["COL", "colorado avalanche"],
+  ["DAL", "dallas stars"],
+  ["DET", "detroit red wings"],
+  ["EDM", "edmonton oilers"],
+  ["FLA", "florida panthers"],
+  ["LA", "los angeles kings"],
+  ["MIN", "minnesota wild"],
+  ["MTL", "montreal canadiens"],
+  ["NJ", "new jersey devils"],
+  ["NSH", "nashville predators"],
+  ["NYI", "new york islanders"],
+  ["NYR", "new york rangers"],
+  ["OTT", "ottawa senators"],
+  ["PHI", "philadelphia flyers"],
+  ["PIT", "pittsburgh penguins"],
+  ["SEA", "seattle kraken"],
+  ["SJ", "san jose sharks"],
+  ["STL", "st. louis blues"],
+  ["TB", "tampa bay lightning"],
+  ["TOR", "toronto maple leafs"],
+  ["UTA", "utah mammoth"],
+  ["VAN", "vancouver canucks"],
+  ["VGK", "vegas golden knights"],
+  ["WPG", "winnipeg jets"],
+  ["WSH", "washington capitals"],
 ]);
 const TEAM_SUFFIX_WORDS = new Set([
   "tigers",
@@ -156,6 +252,20 @@ const TEAM_SUFFIX_WORDS = new Set([
   "eagles",
   "fighting",
 ]);
+const MONTH_INDEX = {
+  JAN: 0,
+  FEB: 1,
+  MAR: 2,
+  APR: 3,
+  MAY: 4,
+  JUN: 5,
+  JUL: 6,
+  AUG: 7,
+  SEP: 8,
+  OCT: 9,
+  NOV: 10,
+  DEC: 11,
+};
 
 function toNumber(value, fallback = 0) {
   const num = Number(value);
@@ -177,6 +287,9 @@ function normalizeSelectionKey(value) {
     .trim();
 
   const parts = normalized.split(" ").filter(Boolean);
+  if (parts.length >= 2 && TEAM_CODE_PREFIXES.has(parts[0])) {
+    parts.shift();
+  }
   if (parts.length >= 2 && TEAM_SUFFIX_WORDS.has(parts[parts.length - 1])) {
     parts.pop();
   }
@@ -192,6 +305,77 @@ function normalizeCompareLabel(value) {
   return String(value || "")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+function parseKalshiGameDate(value) {
+  const match = String(value || "").toUpperCase().match(/-(\d{2})(JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC)(\d{2})/);
+  if (!match) return null;
+  const [, yearText, monthText, dayText] = match;
+  const year = 2000 + Number(yearText);
+  const month = MONTH_INDEX[monthText];
+  const day = Number(dayText);
+  if (!Number.isFinite(year) || month == null || !Number.isFinite(day)) return null;
+  return new Date(Date.UTC(year, month, day, 23, 59, 59)).toISOString();
+}
+
+function currentEasternDateParts(now = new Date()) {
+  const formatter = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/New_York",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  });
+  const parts = formatter.formatToParts(now);
+  const year = parts.find((part) => part.type === "year")?.value;
+  const month = parts.find((part) => part.type === "month")?.value;
+  const day = parts.find((part) => part.type === "day")?.value;
+  return { year, month, day };
+}
+
+function currentEasternYmd(now = new Date()) {
+  const { year, month, day } = currentEasternDateParts(now);
+  return `${year}-${month}-${day}`;
+}
+
+function currentKalshiDateCode(now = new Date()) {
+  const { year, month, day } = currentEasternDateParts(now);
+  const monthCodes = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
+  return `${year.slice(2)}${monthCodes[Number(month) - 1]}${day}`;
+}
+
+function normalizeTeamPhrase(value) {
+  return normalizeSelectionKey(String(value || "").replace(/\bvs\.?\b/gi, " ").replace(/\bat\b/gi, " "));
+}
+
+function normalizeGameLabel(value) {
+  const parts = normalizeText(value)
+    .replace(/\bvs\.?\b/g, " ")
+    .replace(/\bat\b/g, " ")
+    .replace(/[^a-z0-9\s]/g, " ")
+    .split(/\s+/)
+    .filter(Boolean);
+  return parts.join(" ");
+}
+
+function gameKeyFromTeams(sport, dateKey, teams) {
+  const uniqueTeams = [...new Set(teams.map((team) => normalizeTeamPhrase(team)).filter(Boolean))].sort();
+  return `${sport}|${dateKey}|${uniqueTeams.join("|")}`;
+}
+
+function parseKalshiNhlTeamsFromTicker(value) {
+  const ticker = String(value || "").toUpperCase();
+  const match = ticker.match(/KXNHLGAME-\d{2}[A-Z]{3}\d{2}([A-Z]+)-/);
+  if (!match) return [];
+  const compact = match[1];
+  const codes = [...NHL_TEAM_CODES.keys()].sort((a, b) => b.length - a.length);
+  for (const first of codes) {
+    if (!compact.startsWith(first)) continue;
+    const second = compact.slice(first.length);
+    if (NHL_TEAM_CODES.has(second)) {
+      return [NHL_TEAM_CODES.get(first), NHL_TEAM_CODES.get(second)];
+    }
+  }
+  return [];
 }
 
 function clampProbability(value) {
@@ -523,6 +707,140 @@ async function fetchPolymarketFeaturedGameEvent(baseUrl, configEntry) {
   });
 }
 
+async function fetchPolymarketTodayNhlEvents(baseUrl) {
+  const payload = await fetchJson(
+    `${baseUrl}/events?active=true&closed=false&tag_slug=nhl&limit=200&offset=0`,
+    {},
+    { retries: 1, delayMs: 500 }
+  );
+
+  const todayKey = currentEasternYmd();
+  return (Array.isArray(payload) ? payload : []).filter((event) =>
+    String(event.slug || "").startsWith("nhl-") &&
+    String(event.slug || "").endsWith(todayKey)
+  );
+}
+
+function buildPolymarketOutcomeRows(event, market, options = {}) {
+  const outcomes = JSON.parse(market.outcomes || "[]");
+  const outcomePrices = JSON.parse(market.outcomePrices || "[]");
+  if (!Array.isArray(outcomes) || !Array.isArray(outcomePrices) || !outcomes.length) {
+    return [];
+  }
+
+  const marketBestBid = clampProbability(toNumber(market.bestBid));
+  const marketBestAsk = clampProbability(toNumber(market.bestAsk));
+
+  return outcomes.map((selectionLabel, index) => {
+    const isPrimaryOutcome = index === 0;
+    const bestBid = isPrimaryOutcome
+      ? marketBestBid
+      : clampProbability(marketBestAsk ? 1 - marketBestAsk : 0);
+    const bestAsk = isPrimaryOutcome
+      ? marketBestAsk
+      : clampProbability(marketBestBid ? 1 - marketBestBid : 0);
+    const yesPrice = clampProbability(toNumber(outcomePrices[index]));
+
+    return {
+      id: `polymarket-${market.slug || market.id}-${options.idSuffix || "row"}-${index}`,
+      platform: "Polymarket",
+      platformKey: "polymarket",
+      title: market.question || event.title || market.slug,
+      subtitle: options.subtitle || event.title || market.slug,
+      category: options.category || marketTypeLabel(market.sportsMarketType) || "General",
+      sport: options.sport || "NHL",
+      selectionLabel,
+      selectionKey: normalizeSelectionKey(selectionLabel),
+      compareGroupType: options.compareGroupType || null,
+      compareParentLabel: options.compareParentLabel || options.subtitle || event.title,
+      compareGroupKey: options.compareGroupKey || null,
+      compareGameKey: options.compareGameKey || null,
+      compareRowKey: options.compareRowKeyBuilder ? options.compareRowKeyBuilder(selectionLabel, index) : normalizeSelectionKey(selectionLabel),
+      compareRowLabel: options.compareRowLabelBuilder ? options.compareRowLabelBuilder(selectionLabel, index) : selectionLabel,
+      url: `${config.predictionMarkets.polymarketWebBaseUrl.replace(/\/$/, "")}/event/${event.slug || market.slug || market.id}`,
+      yesPrice,
+      noPrice: clampProbability(1 - yesPrice),
+      lastPrice: yesPrice,
+      liquidityUsd:
+        toNumber(market.liquidityClob) ||
+        toNumber(market.liquidityNum) ||
+        toNumber(event.liquidityClob) ||
+        toNumber(event.liquidity),
+      volume24hUsd:
+        toNumber(market.volume24hrClob) ||
+        toNumber(market.volume24hr) ||
+        toNumber(event.volume24hr),
+      openInterestUsd: toNumber(event.openInterest) || toNumber(market.volumeNum),
+      expiresAt: market.gameStartTime || event.startDate || event.endDate || market.endDate || null,
+      yesBook: {
+        bids: bestBid ? [{ price: bestBid, size: 0 }] : [],
+        asks: bestAsk ? [{ price: bestAsk, size: 0 }] : [],
+      },
+    };
+  });
+}
+
+async function fetchPolymarketTodayNhlMarkets(baseUrl) {
+  const events = await fetchPolymarketTodayNhlEvents(baseUrl);
+
+  return events.flatMap((event) => {
+    const teams = Array.isArray(event.teams) && event.teams.length
+      ? event.teams.map((team) => team.name)
+      : String(event.title || "").split(/\s+vs\.\s+/i);
+    const compareGameKey = gameKeyFromTeams("NHL", currentEasternYmd(), teams);
+    const markets = Array.isArray(event.markets) ? event.markets : [];
+
+    return markets.flatMap((market) => {
+      const marketType = String(market.sportsMarketType || "").toLowerCase();
+      if (marketType === "moneyline") {
+        return buildPolymarketOutcomeRows(event, market, {
+          idSuffix: "moneyline",
+          subtitle: event.title,
+          category: "Moneyline",
+          sport: "NHL",
+          compareGameKey,
+          compareParentLabel: event.title,
+          compareGroupType: "nhl-game",
+          compareRowKeyBuilder: (selectionLabel) => `moneyline|${normalizeSelectionKey(selectionLabel)}`,
+          compareRowLabelBuilder: (selectionLabel) => `Moneyline | ${selectionLabel}`,
+        });
+      }
+
+      if (marketType === "totals") {
+        const line = market.line ?? market.groupItemTitle ?? "";
+        return buildPolymarketOutcomeRows(event, market, {
+          idSuffix: "total",
+          subtitle: event.title,
+          category: "Total",
+          sport: "NHL",
+          compareGameKey,
+          compareParentLabel: event.title,
+          compareGroupType: "nhl-game",
+          compareRowKeyBuilder: (selectionLabel) => `total|${line}|${normalizeSelectionKey(selectionLabel)}`,
+          compareRowLabelBuilder: (selectionLabel) => `Total ${line} | ${selectionLabel}`,
+        });
+      }
+
+      if (marketType === "spreads") {
+        const line = market.line ?? market.groupItemTitle ?? "";
+        return buildPolymarketOutcomeRows(event, market, {
+          idSuffix: "spread",
+          subtitle: event.title,
+          category: "Spread",
+          sport: "NHL",
+          compareGameKey,
+          compareParentLabel: event.title,
+          compareGroupType: "nhl-game",
+          compareRowKeyBuilder: (selectionLabel) => `spread|${line}|${normalizeSelectionKey(selectionLabel)}`,
+          compareRowLabelBuilder: (selectionLabel) => `Spread ${line} | ${selectionLabel}`,
+        });
+      }
+
+      return [];
+    });
+  });
+}
+
 function computeDepthMetrics(book) {
   const bids = Array.isArray(book?.bids) ? [...book.bids] : [];
   const asks = Array.isArray(book?.asks) ? [...book.asks] : [];
@@ -690,6 +1008,13 @@ function applyFilters(markets, filters) {
   });
 }
 
+function isActiveMarket(market, now = Date.now()) {
+  if (!market?.expiresAt) return true;
+  const expiresAt = new Date(market.expiresAt).getTime();
+  if (!Number.isFinite(expiresAt)) return true;
+  return expiresAt > now;
+}
+
 function groupComparableMarkets(markets) {
   const groups = [];
   for (const market of markets) {
@@ -739,6 +1064,7 @@ function groupComparableMarkets(markets) {
 
 async function fetchKalshiMarkets() {
   const baseUrl = config.predictionMarkets.kalshiBaseUrl.replace(/\/$/, "");
+  const todayKalshiCode = currentKalshiDateCode();
   const eventPayloads = await Promise.all(
     FEATURED_COLLEGE_BASKETBALL_COMPARE_MARKETS.map(async (configEntry) => ({
       configEntry,
@@ -835,7 +1161,7 @@ async function fetchKalshiMarkets() {
       });
   });
 
-  const gameSeriesTickers = ["KXNCAAMBGAME", "KXNCAAWBGAME"];
+  const gameSeriesTickers = ["KXNCAAMBGAME", "KXNCAAWBGAME", "KXNHLGAME"];
   const gameMarketPayloads = await Promise.all(
     gameSeriesTickers.map((seriesTicker) =>
       fetchJson(
@@ -851,6 +1177,8 @@ async function fetchKalshiMarkets() {
     .filter((market) => String(market.title || "").includes("Winner"));
 
   const normalizedGameMarkets = gameMarkets.map((market) => {
+    const gameDate = parseKalshiGameDate(market.ticker || market.event_ticker || market.series_ticker);
+    const isNhlGame = String(market.ticker || "").startsWith("KXNHLGAME-");
     const yesBid = clampProbability(
       toNumber(market.yes_bid_dollars) ||
         toNumber(market.yes_bid) / 100
@@ -868,7 +1196,16 @@ async function fetchKalshiMarkets() {
     );
     const yesPrice = lastPrice || yesAsk || yesBid || 0.5;
     const selectionLabel = market.yes_sub_title || teamLabelFromTitle(market.title);
-    const compareParentLabel = normalizeCompareLabel(market.title || "College Basketball Game Winner");
+    const compareParentLabel = normalizeCompareLabel(
+      isNhlGame
+        ? String(market.title || "").replace(/\s+Winner\?/i, "")
+        : market.title || "College Basketball Game Winner"
+    );
+    const nhlTeams = isNhlGame ? parseKalshiNhlTeamsFromTicker(market.ticker) : [];
+    const compareGameKey =
+      isNhlGame && nhlTeams.length === 2
+        ? gameKeyFromTeams("NHL", currentEasternYmd(), nhlTeams)
+        : null;
 
     return {
       id: `kalshi-${market.ticker}`,
@@ -876,12 +1213,15 @@ async function fetchKalshiMarkets() {
       platformKey: "kalshi",
       title: market.title || market.subtitle || market.ticker,
       subtitle: compareParentLabel,
-      category: "Game Winner",
-      sport: "College Basketball",
+      category: "Moneyline",
+      sport: isNhlGame ? "NHL" : "College Basketball",
       selectionLabel,
       selectionKey: normalizeSelectionKey(selectionLabel),
-      compareGroupType: "game-winner",
+      compareGroupType: isNhlGame ? "nhl-game" : "game-winner",
       compareParentLabel,
+      compareGameKey,
+      compareRowKey: `moneyline|${normalizeSelectionKey(selectionLabel)}`,
+      compareRowLabel: `Moneyline | ${selectionLabel}`,
       components: [],
       url: `${config.predictionMarkets.kalshiWebBaseUrl.replace(/\/$/, "")}/market/${market.ticker}`,
       yesPrice,
@@ -901,12 +1241,15 @@ async function fetchKalshiMarkets() {
         toNumber(market.open_interest) ||
         toNumber(market.open_interest_fp) ||
         0,
-      expiresAt: market.expiration_time || market.close_time || null,
+      expiresAt: gameDate || market.expiration_time || market.close_time || null,
       yesBook: {
         bids: yesBid ? [{ price: yesBid, size: Math.max(0, toNumber(market.yes_bid_size) || toNumber(market.yes_bid_size_fp) || 0) }] : [],
         asks: yesAsk ? [{ price: yesAsk, size: Math.max(0, toNumber(market.yes_ask_size) || toNumber(market.yes_ask_size_fp) || 0) }] : [],
       },
     };
+  }).filter((market) => {
+    if (market.sport !== "NHL") return true;
+    return String(market.id || "").includes(todayKalshiCode);
   });
 
   const featuredGameMarkets = featuredGamePayloads.flatMap(({ configEntry, payload }) => {
@@ -914,6 +1257,7 @@ async function fetchKalshiMarkets() {
     const markets = Array.isArray(payload?.markets) ? payload.markets : [];
 
     return markets.map((market) => {
+      const gameDate = parseKalshiGameDate(market.ticker || market.event_ticker || configEntry.kalshiEventTicker);
       const yesBid = clampProbability(toNumber(market.yes_bid_dollars) || toNumber(market.yes_bid) / 100);
       const yesAsk = clampProbability(toNumber(market.yes_ask_dollars) || toNumber(market.yes_ask) / 100);
       const yesPrice = clampProbability(toNumber(market.last_price_dollars) || yesAsk || yesBid || 0.5);
@@ -941,7 +1285,7 @@ async function fetchKalshiMarkets() {
         liquidityUsd: toNumber(market.liquidity_dollars) || toNumber(market.liquidity),
         volume24hUsd: toNumber(market.volume_24h_fp) || toNumber(market.volume),
         openInterestUsd: toNumber(market.open_interest_fp) || 0,
-        expiresAt: market.expiration_time || event.expected_expiration_time || null,
+        expiresAt: gameDate || market.expiration_time || event.expected_expiration_time || null,
         yesBook: {
           bids: yesBid ? [{ price: yesBid, size: Math.max(0, toNumber(market.yes_bid_size_fp) || 0) }] : [],
           asks: yesAsk ? [{ price: yesAsk, size: Math.max(0, toNumber(market.yes_ask_size_fp) || 0) }] : [],
@@ -967,9 +1311,10 @@ async function fetchPolymarketMarkets() {
     )
   );
   const featuredGameMarkets = featuredGameGroups.flat();
+  const todayNhlMarkets = await fetchPolymarketTodayNhlMarkets(gammaBaseUrl);
 
   const deduped = new Map();
-  for (const market of [...featuredMarkets, ...featuredGameMarkets]) {
+  for (const market of [...featuredMarkets, ...featuredGameMarkets, ...todayNhlMarkets]) {
     deduped.set(market.id, market);
   }
 
@@ -1006,6 +1351,7 @@ async function loadSource(sourceName, loader, fallback) {
 }
 
 async function buildDashboardPayload() {
+  const now = Date.now();
   const [kalshiSource, polymarketSource] = await Promise.all([
     loadSource("kalshi", fetchKalshiMarkets, mockData.kalshi),
     loadSource("polymarket", fetchPolymarketMarkets, mockData.polymarket),
@@ -1013,9 +1359,10 @@ async function buildDashboardPayload() {
 
   const normalizedMarkets = [...kalshiSource.markets, ...polymarketSource.markets]
     .map(normalizeMarket)
+    .filter((market) => isActiveMarket(market, now))
     .sort((a, b) => b.liquidityUsd - a.liquidityUsd);
 
-  pruneAndRecordHistory(normalizedMarkets, Date.now());
+  pruneAndRecordHistory(normalizedMarkets, now);
 
   previousMarketState = new Map(
     normalizedMarkets.map((market) => [

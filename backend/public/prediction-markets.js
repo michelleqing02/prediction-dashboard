@@ -26,8 +26,9 @@ const VENUES = [
   { key: "polymarket", label: "Polymarket" },
 ];
 
-const SPORT_ORDER = ["College Basketball"];
+const SPORT_ORDER = ["NHL", "College Basketball"];
 const SPORT_LABELS = {
+  NHL: "NHL",
   "College Basketball": "NCAAB",
 };
 
@@ -42,11 +43,11 @@ const GAME_MARKET_TYPES = [
   "rebounds",
   "assists",
 ];
-const COMPARE_SPORTS = new Set(["College Basketball"]);
+const COMPARE_SPORTS = new Set(["College Basketball", "NHL"]);
 
 const state = {
   dashboard: null,
-  selectedSport: "College Basketball",
+  selectedSport: "NHL",
   selectedCategory: "",
   selectedVenueKey: "compare",
   selectedMarketId: "",
@@ -265,12 +266,12 @@ function buildMarketGroups(markets) {
 }
 
 function buildCompareGroups(dashboard) {
-  const collegeBasketballMarkets = (dashboard?.markets || []).filter(
-    (market) => market.sport === "College Basketball" && market.selectionKey
+  const compareMarkets = (dashboard?.markets || []).filter(
+    (market) => COMPARE_SPORTS.has(market.sport) && (market.selectionKey || market.compareRowKey)
   );
   const compareGroups = new Map();
 
-  for (const market of collegeBasketballMarkets) {
+  for (const market of compareMarkets) {
     const type = market.compareGroupType || market.category || "general";
     const label = String(
       market.compareParentLabel ||
@@ -280,7 +281,7 @@ function buildCompareGroups(dashboard) {
       market.title ||
       "Comparable Market"
     ).trim();
-    const groupId = String(market.compareGroupKey || `${type}|${label}`).trim();
+    const groupId = String(market.compareGameKey || market.compareGroupKey || `${type}|${label}`).trim();
 
     if (!compareGroups.has(groupId)) {
       compareGroups.set(groupId, {
@@ -292,38 +293,41 @@ function buildCompareGroups(dashboard) {
     }
 
     const compareGroup = compareGroups.get(groupId);
-    if (market.platformKey === "kalshi") {
+    if (market.platformKey === "polymarket") {
       compareGroup.label = label || compareGroup.label;
     }
 
-    if (!compareGroup.rows.has(market.selectionKey)) {
-      compareGroup.rows.set(market.selectionKey, {
-        selection: market.selectionLabel || market.title || market.selectionKey,
+    const rowKey = String(market.compareRowKey || market.selectionKey || market.id);
+    if (!compareGroup.rows.has(rowKey)) {
+      compareGroup.rows.set(rowKey, {
+        selection: market.compareRowLabel || market.selectionLabel || market.title || market.selectionKey,
         expiresAt: market.expiresAt || null,
         kalshi: null,
         polymarket: null,
       });
     }
 
-    const row = compareGroup.rows.get(market.selectionKey);
+    const row = compareGroup.rows.get(rowKey);
     if (market.platformKey === "kalshi") {
       row.kalshi = market;
     }
     if (market.platformKey === "polymarket") {
       row.polymarket = market;
     }
-    row.selection = row.selection || market.selectionLabel || market.title || market.selectionKey;
+    row.selection = row.selection || market.compareRowLabel || market.selectionLabel || market.title || market.selectionKey;
     row.expiresAt = row.expiresAt || market.expiresAt || null;
   }
 
   return [...compareGroups.values()]
     .filter((group) => {
-      const rows = [...group.rows.values()];
+      const rows = [...group.rows.values()].filter((row) => row.kalshi);
       return rows.some((row) => row.kalshi) && rows.some((row) => row.polymarket);
     })
     .map((group) => ({
       ...group,
-      rows: [...group.rows.values()].sort((a, b) => {
+      rows: [...group.rows.values()]
+        .filter((row) => row.kalshi)
+        .sort((a, b) => {
         const aScore = Math.max(Number(a.kalshi?.yesPrice || 0), Number(a.polymarket?.yesPrice || 0));
         const bScore = Math.max(Number(b.kalshi?.yesPrice || 0), Number(b.polymarket?.yesPrice || 0));
         return bScore - aScore;
@@ -494,7 +498,7 @@ function renderDashboard() {
     : "--";
   sourceModeEl.textContent = venueModeLabel(dashboard.sourceStatus);
   boardTitleEl.textContent = showCompareBoard
-    ? `College Basketball Compare | ${sportLabel(state.selectedSport)}`
+    ? `${sportLabel(state.selectedSport)} Compare | Kalshi vs Polymarket`
     : `${venue.label} board${state.selectedSport ? ` | ${sportLabel(state.selectedSport)}` : ""}`;
   categorySelect.disabled = showCompareBoard;
   searchInput.disabled = false;
@@ -712,7 +716,7 @@ function renderVenueCell(market, venueKey, flags = []) {
   if (flags.includes("incomplete")) flagLabels.push("Partial");
 
   const flagMarkup = flagLabels.length
-    ? `<span class="metric-inline venue-flags">${escapeHtml(flagLabels.join(" • "))}</span>`
+    ? `<span class="metric-inline venue-flags">${escapeHtml(flagLabels.join(" | "))}</span>`
     : "";
 
   return `
