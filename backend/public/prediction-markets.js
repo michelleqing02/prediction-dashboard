@@ -1,6 +1,7 @@
 const categorySelect = document.getElementById("categorySelect");
 const searchInput = document.getElementById("searchInput");
 const themeSelect = document.getElementById("themeSelect");
+const oddsFormatSelect = document.getElementById("oddsFormatSelect");
 const updatedAtEl = document.getElementById("updatedAt");
 const sourceModeEl = document.getElementById("sourceMode");
 const errorBannerEl = document.getElementById("errorBanner");
@@ -55,6 +56,7 @@ const state = {
   hasSeededExpandedGroups: false,
   expandedCompareGroupIds: [],
   theme: window.localStorage.getItem("prediction-market-theme") || "black",
+  oddsFormat: window.localStorage.getItem("prediction-market-odds-format") || "decimal",
 };
 
 categorySelect.addEventListener("change", () => {
@@ -73,9 +75,38 @@ themeSelect.addEventListener("change", () => {
   applyTheme();
 });
 
+oddsFormatSelect.addEventListener("change", () => {
+  state.oddsFormat = oddsFormatSelect.value || "decimal";
+  applyOddsFormat();
+  renderDashboard();
+});
+
 function formatPercent(value) {
   if (value == null) return "--";
   return `${(Number(value) * 100).toFixed(1)}%`;
+}
+
+function formatDecimalOdds(value) {
+  const probability = Number(value);
+  if (!Number.isFinite(probability) || probability <= 0 || probability > 1) return "--";
+  return (1 / probability).toFixed(2);
+}
+
+function formatAmericanOdds(value) {
+  const probability = Number(value);
+  if (!Number.isFinite(probability) || probability <= 0 || probability >= 1) return "--";
+  if (probability === 0.5) return "+100";
+  if (probability < 0.5) {
+    return `+${Math.round(((1 - probability) / probability) * 100)}`;
+  }
+  return `${Math.round((-probability / (1 - probability)) * 100)}`;
+}
+
+function formatPrice(value) {
+  if (value == null) return "--";
+  if (state.oddsFormat === "american") return formatAmericanOdds(value);
+  if (state.oddsFormat === "implied") return formatPercent(value);
+  return formatDecimalOdds(value);
 }
 
 function formatDelta(value) {
@@ -193,6 +224,11 @@ function applyTheme() {
   document.body.dataset.theme = state.theme;
   themeSelect.value = state.theme;
   window.localStorage.setItem("prediction-market-theme", state.theme);
+}
+
+function applyOddsFormat() {
+  oddsFormatSelect.value = state.oddsFormat;
+  window.localStorage.setItem("prediction-market-odds-format", state.oddsFormat);
 }
 
 function groupTitleForMarket(market) {
@@ -721,8 +757,8 @@ function renderVenueCell(market, venueKey, flags = []) {
 
   return `
     <button type="button" class="board-row-button venue-col ${cellClasses}" data-market-id="${escapeHtml(market.id)}">
-      <strong>${escapeHtml(formatPercent(market.yesPrice))}</strong>
-      <span class="bidask">${escapeHtml(formatPercent(market.topBid?.price))} / ${escapeHtml(formatPercent(market.topAsk?.price))}</span>
+      <strong>${escapeHtml(formatPrice(market.yesPrice))}</strong>
+      <span class="bidask">${escapeHtml(formatPrice(market.topBid?.price))} / ${escapeHtml(formatPrice(market.topAsk?.price))}</span>
       <span class="metric-inline">Spr ${escapeHtml(formatSpread(market.spread))}</span>
       <span class="metric-inline">${escapeHtml(depthLabel)} ${escapeHtml(formatCurrency(liquidityValueForMarket(market)))}</span>
       <span class="metric-inline">1h ${escapeHtml(formatDelta(market.priceChange1h || 0))}</span>
@@ -845,8 +881,8 @@ function renderBoardRow(market) {
       <div class="meta-col">${escapeHtml(formatDateTimeShort(market.expiresAt))}</div>
       <div class="meta-col">${escapeHtml(market.category || "--")}</div>
       <button type="button" class="board-row-button venue-col ${selected ? "venue-selected" : ""}" data-market-id="${escapeHtml(market.id)}">
-        <strong>${escapeHtml(formatPercent(market.yesPrice))}</strong>
-        <span class="bidask">${escapeHtml(formatPercent(market.topBid?.price))} / ${escapeHtml(formatPercent(market.topAsk?.price))}</span>
+        <strong>${escapeHtml(formatPrice(market.yesPrice))}</strong>
+        <span class="bidask">${escapeHtml(formatPrice(market.topBid?.price))} / ${escapeHtml(formatPrice(market.topAsk?.price))}</span>
         <span class="metric-inline">Spr ${escapeHtml(formatSpread(market.spread))}</span>
         <span class="metric-inline">${escapeHtml(market.platformKey === "kalshi" ? "Depth" : "Liq")} ${escapeHtml(formatCurrency(liquidityValueForMarket(market)))}</span>
         <span class="metric-inline">1h ${escapeHtml(formatDelta(market.priceChange1h || 0))}</span>
@@ -869,7 +905,7 @@ function renderKalshiComponentRow(market, component) {
       <div class="meta-col">${escapeHtml(formatDateTimeShort(market.expiresAt))}</div>
       <div class="meta-col">${escapeHtml(sideLabel || "LEG")}</div>
       <button type="button" class="board-row-button venue-col ${selected ? "venue-selected" : ""}" data-market-id="${escapeHtml(market.id)}">
-        <strong>${escapeHtml(formatPercent(market.yesPrice))}</strong>
+        <strong>${escapeHtml(formatPrice(market.yesPrice))}</strong>
         <span class="bidask">Combo market pricing</span>
         <span class="metric-inline">${escapeHtml(component.marketTicker || "Leg ticker unavailable")}</span>
         <span class="metric-inline">1h ${escapeHtml(formatDelta(market.priceChange1h || 0))}</span>
@@ -914,21 +950,21 @@ function renderDetail(market) {
   }
 
   signalsEl.innerHTML = [
-    signalCard("YES price", formatPercent(market.yesPrice), `${formatDelta(market.priceChange)} vs prior snapshot`, market.priceChange),
+    signalCard("YES price", formatPrice(market.yesPrice), `${formatDelta(market.priceChange)} vs prior snapshot`, market.priceChange),
     signalCard(liquidityLabelForMarket(market), formatCurrency(liquidityValueForMarket(market)), market.displayLiquidityChange1h ? `${market.displayLiquidityChange1h > 0 ? "+" : "-"}${formatCurrency(Math.abs(market.displayLiquidityChange1h))} over 1h` : "No change yet", market.displayLiquidityChange1h),
     signalCard("24h traded volume", formatCurrency(market.volume24hUsd), `Open interest ${formatCurrency(market.openInterestUsd)}`, 0),
-    signalCard("Spread", formatSpread(market.spread), `Bid ${formatPercent(market.topBid?.price)} / Ask ${formatPercent(market.topAsk?.price)}`, market.spread ? -market.spread : 0),
+    signalCard("Spread", formatSpread(market.spread), `Bid ${formatPrice(market.topBid?.price)} / Ask ${formatPrice(market.topAsk?.price)}`, market.spread ? -market.spread : 0),
     signalCard("Bid book notional", formatCurrency(market.totalBidNotionalUsd), `${formatCompactNumber(market.totalBidSize)} resting shares/contracts`, 0),
     signalCard("Ask book notional", formatCurrency(market.totalAskNotionalUsd), `${formatCompactNumber(market.totalAskSize)} resting shares/contracts`, 0),
   ].join("");
 
   quoteBreakdownEl.innerHTML = [
-    detailListRow("YES last", formatPercent(market.yesPrice)),
-    detailListRow("NO last", formatPercent(market.noPrice)),
-    detailListRow("YES bid", formatPercent(market.topBid?.price)),
-    detailListRow("YES ask", formatPercent(market.topAsk?.price)),
+    detailListRow("YES last", formatPrice(market.yesPrice)),
+    detailListRow("NO last", formatPrice(market.noPrice)),
+    detailListRow("YES bid", formatPrice(market.topBid?.price)),
+    detailListRow("YES ask", formatPrice(market.topAsk?.price)),
     detailListRow("Spread", formatSpread(market.spread)),
-    detailListRow("Mid price", market.topBid?.price != null && market.topAsk?.price != null ? formatPercent((Number(market.topBid.price) + Number(market.topAsk.price)) / 2) : "--"),
+    detailListRow("Mid price", market.topBid?.price != null && market.topAsk?.price != null ? formatPrice((Number(market.topBid.price) + Number(market.topAsk.price)) / 2) : "--"),
     detailListRow("5m change", formatDelta(market.priceChange5m || 0)),
     detailListRow("1h change", formatDelta(market.priceChange1h || 0)),
     detailListRow("Bid size", formatCompactNumber(market.totalBidSize)),
@@ -988,9 +1024,9 @@ function renderDepth(market) {
     const ask = asks[index];
     return `
       <div class="depth-row">
-        <span>${bid ? escapeHtml(formatPercent(bid.price)) : "--"}</span>
+        <span>${bid ? escapeHtml(formatPrice(bid.price)) : "--"}</span>
         <span>${bid ? escapeHtml(formatCompactNumber(bid.size)) : "--"}</span>
-        <span>${ask ? escapeHtml(formatPercent(ask.price)) : "--"}</span>
+        <span>${ask ? escapeHtml(formatPrice(ask.price)) : "--"}</span>
         <span>${ask ? escapeHtml(formatCompactNumber(ask.size)) : "--"}</span>
       </div>
     `;
@@ -1008,7 +1044,7 @@ function renderPockets(market) {
     .map(
       (level) => `
         <div class="pocket-row">
-          <strong>${escapeHtml(formatPercent(level.price))}</strong>
+          <strong>${escapeHtml(formatPrice(level.price))}</strong>
           <span>${escapeHtml(formatCompactNumber(level.size))} resting size</span>
         </div>
       `
@@ -1018,6 +1054,7 @@ function renderPockets(market) {
 
 async function init() {
   applyTheme();
+  applyOddsFormat();
   await loadDashboard();
   window.setInterval(loadDashboard, 5000);
 }
