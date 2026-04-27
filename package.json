@@ -4,9 +4,12 @@
   "private": true,
   "description": "Production-oriented WNBA odds aggregation scaffold",
   "scripts": {
+    "postinstall": "npm install --prefix backend && npm install --prefix frontend",
     "backend": "npm --prefix backend run dev",
     "frontend": "npm --prefix frontend run dev",
     "backend:start": "npm --prefix backend run start",
-    "frontend:build": "npm --prefix frontend run build"
+    "frontend:build": "npm --prefix frontend run build",
+    "build": "npm run frontend:build",
+    "start": "npm --prefix backend run start"
   }
 }

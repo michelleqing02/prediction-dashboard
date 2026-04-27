@@ -1,28 +1,49 @@
-export async function fetchGames() {
-  const response = await fetch("/games");
+export async function fetchWnbaModel() {
+  const response = await fetch("/api/wnba-model");
+  if (!response.ok) {
+    const payload = await response.json().catch(() => ({}));
+    throw new Error(payload.error || `Request failed with status ${response.status}`);
+  }
   return response.json();
 }
 
-export async function fetchBooks() {
-  const response = await fetch("/books");
+export async function fetchWnbaResultsTracker() {
+  const response = await fetch("/api/wnba-results-tracker");
+  if (!response.ok) {
+    const payload = await response.json().catch(() => ({}));
+    throw new Error(payload.error || `Request failed with status ${response.status}`);
+  }
   return response.json();
 }
 
-export async function fetchOdds({ gameId, sportsbook, marketType }) {
-  const params = new URLSearchParams();
-  params.set("game_id", gameId);
-  if (sportsbook) params.set("sportsbook", sportsbook);
-  if (marketType) params.set("marketType", marketType);
-  const response = await fetch(`/odds?${params.toString()}`);
+export async function saveWnbaResultsEntry(entry) {
+  const response = await fetch("/api/wnba-results-tracker/entries", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(entry),
+  });
+  if (!response.ok) {
+    const payload = await response.json().catch(() => ({}));
+    throw new Error(payload.error || `Request failed with status ${response.status}`);
+  }
   return response.json();
 }
 
-export async function fetchPredictionMarkets({ platform, category, search }) {
-  const params = new URLSearchParams();
-  if (platform) params.set("platform", platform);
-  if (category) params.set("category", category);
-  if (search) params.set("search", search);
-  const suffix = params.toString() ? `?${params.toString()}` : "";
-  const response = await fetch(`/api/prediction-markets${suffix}`);
+export async function deleteWnbaResultsEntry(entryId) {
+  const response = await fetch("/api/wnba-results-tracker/entries", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ deleteEntryId: entryId, action: "delete" }),
+  });
+
+  if (!response.ok) {
+    const payload = await response.json().catch(() => ({}));
+    throw new Error(payload.error || `Request failed with status ${response.status}`);
+  }
+
   return response.json();
 }
