@@ -71,7 +71,7 @@ const POLYMARKET_SPORT_TAGS = [
   { tagSlug: "ncaab", sport: "College Basketball" },
   { tagSlug: "nhl", sport: "NHL" },
 ];
-const FEATURED_COMPARE_MARKETS = [
+const FEATURED_COLLEGE_BASKETBALL_COMPARE_MARKETS = [
   {
     key: "wcbb-championship",
     sport: "College Basketball",
@@ -90,53 +90,8 @@ const FEATURED_COMPARE_MARKETS = [
     polymarketEventSlug: "2026-ncaa-tournament-winner",
     polymarketUrl: "https://polymarket.com/event/2026-ncaa-tournament-winner",
   },
-  {
-    key: "nhl-stanley-cup",
-    sport: "NHL",
-    label: "Stanley Cup Champion",
-    kalshiEventTicker: "KXNHL-26",
-    kalshiUrl: "https://kalshi.com/markets/kxnhl/nhl-champion/kxnhl-26",
-    polymarketEventSlug: "2026-nhl-stanley-cup-champion",
-    polymarketUrl: "https://polymarket.com/event/2026-nhl-stanley-cup-champion",
-  },
-  {
-    key: "nhl-norris",
-    sport: "NHL",
-    label: "James Norris Memorial Trophy",
-    kalshiEventTicker: "KXNHLNORRIS-26",
-    kalshiUrl: "https://kalshi.com/markets/kxnhlnorris/nhl-james-norris-memorial-trophy/kxnhlnorris-26",
-    polymarketEventSlug: "nhl-2025-26-james-norris-memorial-trophy",
-    polymarketUrl: "https://polymarket.com/event/nhl-2025-26-james-norris-memorial-trophy",
-  },
-  {
-    key: "nhl-hart",
-    sport: "NHL",
-    label: "Hart Memorial Trophy",
-    kalshiEventTicker: "KXNHLHART-26",
-    kalshiUrl: "https://kalshi.com/markets/kxnhlhart/nhl-hart-memorial-trophy/kxnhlhart-26",
-    polymarketEventSlug: "nhl-2025-26-hart-memorial-trophy",
-    polymarketUrl: "https://polymarket.com/event/nhl-2025-26-hart-memorial-trophy",
-  },
-  {
-    key: "nhl-vezina",
-    sport: "NHL",
-    label: "Vezina Trophy",
-    kalshiEventTicker: "KXNHLVEZINA-26",
-    kalshiUrl: "https://kalshi.com/markets/kxnhlvezina/nhl-vezina-trophy/kxnhlvezina-26",
-    polymarketEventSlug: "nhl-2025-26-vezina-trophy",
-    polymarketUrl: "https://polymarket.com/event/nhl-2025-26-vezina-trophy",
-  },
-  {
-    key: "nhl-calder",
-    sport: "NHL",
-    label: "Calder Memorial Trophy",
-    kalshiEventTicker: "KXNHLCALDER-26",
-    kalshiUrl: "https://kalshi.com/markets/kxnhlcalder/nhl-calder-memorial-trophy/kxnhlcalder-26",
-    polymarketEventSlug: "nhl-2025-26-calder-memorial-trophy",
-    polymarketUrl: "https://polymarket.com/event/nhl-2025-26-calder-memorial-trophy",
-  },
 ];
-const FEATURED_COMPARE_GAMES = [
+const FEATURED_COLLEGE_BASKETBALL_COMPARE_GAMES = [
   {
     key: "mcbb-game-arizona-michigan",
     sport: "College Basketball",
@@ -154,17 +109,6 @@ const FEATURED_COMPARE_GAMES = [
     kalshiUrl: "https://kalshi.com/markets/kxncaambgame/mens-college-basketball-mens-game/kxncaambgame-26apr04illconn",
     polymarketEventSlug: "cbb-uconn-ill-2026-04-04",
     polymarketUrl: "https://polymarket.com/sports/cbb/cbb-uconn-ill-2026-04-04",
-  },
-  {
-    key: "nhl-series-ducks-oilers",
-    sport: "NHL",
-    label: "Anaheim Ducks vs. Edmonton Oilers",
-    category: "Series Winner",
-    compareGroupType: "nhl-series",
-    kalshiEventTicker: "KXNHLSERIES-26ANAEDMR1",
-    kalshiUrl: "https://kalshi.com/markets/kxnhlseries/nhl-series-winner/kxnhlseries-26anaedmr1",
-    polymarketEventSlug: "nhl-playoffs-who-will-win-series-ducks-vs-oilers",
-    polymarketUrl: "https://polymarket.com/event/nhl-playoffs-who-will-win-series-ducks-vs-oilers",
   },
 ];
 const TEAM_ALIASES = new Map([
@@ -399,30 +343,6 @@ function easternYmd(value) {
   const date = value instanceof Date ? value : new Date(value);
   if (Number.isNaN(date.getTime())) return "";
   return currentEasternYmd(date);
-}
-
-function parseYmd(value) {
-  const match = String(value || "").match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  if (!match) return null;
-  return new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3]), 12, 0, 0));
-}
-
-function ymdFromSlug(value) {
-  const match = String(value || "").match(/(\d{4}-\d{2}-\d{2})$/);
-  return match ? match[1] : "";
-}
-
-function daysBetweenYmd(a, b) {
-  const aDate = parseYmd(a);
-  const bDate = parseYmd(b);
-  if (!aDate || !bDate) return null;
-  return Math.round((bDate.getTime() - aDate.getTime()) / 86400000);
-}
-
-function isUpcomingWithinDays(targetYmd, daysAhead = 7) {
-  if (!targetYmd) return false;
-  const delta = daysBetweenYmd(currentEasternYmd(), targetYmd);
-  return delta != null && delta >= 0 && delta <= daysAhead;
 }
 
 function currentKalshiDateCode(now = new Date()) {
@@ -770,11 +690,11 @@ async function fetchPolymarketFeaturedGameEvent(baseUrl, configEntry) {
         platformKey: "polymarket",
         title: market.question || event.title || market.slug,
         subtitle: configEntry.label,
-        category: configEntry.category || "Game Winner",
+        category: "Game Winner",
         sport: configEntry.sport,
         selectionLabel,
         selectionKey: normalizeSelectionKey(selectionLabel),
-        compareGroupType: configEntry.compareGroupType || "game-winner",
+        compareGroupType: "game-winner",
         compareParentLabel: configEntry.label,
         compareGroupKey: configEntry.key,
         compareGroupLabel: configEntry.label,
@@ -795,19 +715,18 @@ async function fetchPolymarketFeaturedGameEvent(baseUrl, configEntry) {
   });
 }
 
-async function fetchPolymarketUpcomingNhlEvents(baseUrl) {
+async function fetchPolymarketTodayNhlEvents(baseUrl) {
   const payload = await fetchJson(
     `${baseUrl}/events?active=true&closed=false&tag_slug=nhl&limit=200&offset=0`,
     {},
     { retries: 1, delayMs: 500 }
   );
 
-  return (Array.isArray(payload) ? payload : []).filter((event) => {
-    const slug = String(event.slug || "");
-    if (!slug.startsWith("nhl-")) return false;
-    const eventYmd = ymdFromSlug(slug) || easternYmd(event.startDate || event.gameStartTime || event.endDate);
-    return isUpcomingWithinDays(eventYmd, 7);
-  });
+  const todayKey = currentEasternYmd();
+  return (Array.isArray(payload) ? payload : []).filter((event) =>
+    String(event.slug || "").startsWith("nhl-") &&
+    String(event.slug || "").endsWith(todayKey)
+  );
 }
 
 function buildPolymarketOutcomeRows(event, market, options = {}) {
@@ -869,15 +788,14 @@ function buildPolymarketOutcomeRows(event, market, options = {}) {
   });
 }
 
-async function fetchPolymarketUpcomingNhlMarkets(baseUrl) {
-  const events = await fetchPolymarketUpcomingNhlEvents(baseUrl);
+async function fetchPolymarketTodayNhlMarkets(baseUrl) {
+  const events = await fetchPolymarketTodayNhlEvents(baseUrl);
 
   return events.flatMap((event) => {
     const teams = Array.isArray(event.teams) && event.teams.length
       ? event.teams.map((team) => team.name)
       : String(event.title || "").split(/\s+vs\.\s+/i);
-    const eventYmd = ymdFromSlug(event.slug) || easternYmd(event.startDate || event.gameStartTime || event.endDate) || currentEasternYmd();
-    const compareGameKey = gameKeyFromTeams("NHL", eventYmd, teams);
+    const compareGameKey = gameKeyFromTeams("NHL", currentEasternYmd(), teams);
     const markets = Array.isArray(event.markets) ? event.markets : [];
 
     return markets.flatMap((market) => {
@@ -972,14 +890,13 @@ async function fetchFanduelNhlMarkets() {
   const todayKey = currentEasternYmd();
 
   return (Array.isArray(payload) ? payload : [])
-    .filter((event) => isUpcomingWithinDays(easternYmd(event.commence_time), 7))
+    .filter((event) => easternYmd(event.commence_time) === todayKey)
     .flatMap((event) => {
       const bookmaker = Array.isArray(event.bookmakers)
         ? event.bookmakers.find((entry) => entry.key === "fanduel")
         : null;
       const teams = [event.away_team, event.home_team].filter(Boolean);
-      const eventYmd = easternYmd(event.commence_time) || todayKey;
-      const compareGameKey = teams.length === 2 ? gameKeyFromTeams("NHL", eventYmd, teams) : null;
+      const compareGameKey = teams.length === 2 ? gameKeyFromTeams("NHL", todayKey, teams) : null;
 
       return (bookmaker?.markets || []).flatMap((market) => {
         const marketKey = String(market.key || "");
@@ -1269,8 +1186,9 @@ function groupComparableMarkets(markets) {
 
 async function fetchKalshiMarkets() {
   const baseUrl = config.predictionMarkets.kalshiBaseUrl.replace(/\/$/, "");
+  const todayKalshiCode = currentKalshiDateCode();
   const eventPayloads = await Promise.all(
-    FEATURED_COMPARE_MARKETS.map(async (configEntry) => ({
+    FEATURED_COLLEGE_BASKETBALL_COMPARE_MARKETS.map(async (configEntry) => ({
       configEntry,
       payload: await fetchJson(
         `${baseUrl}/events/${configEntry.kalshiEventTicker}`,
@@ -1280,7 +1198,7 @@ async function fetchKalshiMarkets() {
     }))
   );
   const featuredGamePayloads = await Promise.all(
-    FEATURED_COMPARE_GAMES.map(async (configEntry) => ({
+    FEATURED_COLLEGE_BASKETBALL_COMPARE_GAMES.map(async (configEntry) => ({
       configEntry,
       payload: await fetchJson(
         `${baseUrl}/events/${configEntry.kalshiEventTicker}`,
@@ -1406,10 +1324,9 @@ async function fetchKalshiMarkets() {
         : market.title || "College Basketball Game Winner"
     );
     const nhlTeams = isNhlGame ? parseKalshiNhlTeamsFromTicker(market.ticker) : [];
-    const gameYmd = gameDate ? easternYmd(gameDate) : currentEasternYmd();
     const compareGameKey =
       isNhlGame && nhlTeams.length === 2
-        ? gameKeyFromTeams("NHL", gameYmd, nhlTeams)
+        ? gameKeyFromTeams("NHL", currentEasternYmd(), nhlTeams)
         : null;
 
     return {
@@ -1454,7 +1371,7 @@ async function fetchKalshiMarkets() {
     };
   }).filter((market) => {
     if (market.sport !== "NHL") return true;
-    return isUpcomingWithinDays(easternYmd(market.expiresAt), 7);
+    return String(market.id || "").includes(todayKalshiCode);
   });
 
   const featuredGameMarkets = featuredGamePayloads.flatMap(({ configEntry, payload }) => {
@@ -1474,11 +1391,11 @@ async function fetchKalshiMarkets() {
         platformKey: "kalshi",
         title: market.title || event.title || market.ticker,
         subtitle: configEntry.label,
-        category: configEntry.category || "Game Winner",
+        category: "Game Winner",
         sport: configEntry.sport,
         selectionLabel,
         selectionKey: normalizeSelectionKey(selectionLabel),
-        compareGroupType: configEntry.compareGroupType || "game-winner",
+        compareGroupType: "game-winner",
         compareParentLabel: configEntry.label,
         compareGroupKey: configEntry.key,
         compareGroupLabel: configEntry.label,
@@ -1505,18 +1422,18 @@ async function fetchKalshiMarkets() {
 async function fetchPolymarketMarkets() {
   const gammaBaseUrl = config.predictionMarkets.polymarketGammaBaseUrl.replace(/\/$/, "");
   const featuredGroups = await Promise.all(
-    FEATURED_COMPARE_MARKETS.map((configEntry) =>
+    FEATURED_COLLEGE_BASKETBALL_COMPARE_MARKETS.map((configEntry) =>
       fetchPolymarketFeaturedEvent(gammaBaseUrl, configEntry)
     )
   );
   const featuredMarkets = featuredGroups.flat();
   const featuredGameGroups = await Promise.all(
-    FEATURED_COMPARE_GAMES.map((configEntry) =>
+    FEATURED_COLLEGE_BASKETBALL_COMPARE_GAMES.map((configEntry) =>
       fetchPolymarketFeaturedGameEvent(gammaBaseUrl, configEntry)
     )
   );
   const featuredGameMarkets = featuredGameGroups.flat();
-  const todayNhlMarkets = await fetchPolymarketUpcomingNhlMarkets(gammaBaseUrl);
+  const todayNhlMarkets = await fetchPolymarketTodayNhlMarkets(gammaBaseUrl);
 
   const deduped = new Map();
   for (const market of [...featuredMarkets, ...featuredGameMarkets, ...todayNhlMarkets]) {

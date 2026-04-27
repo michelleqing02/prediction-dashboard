@@ -19,7 +19,7 @@ module.exports = {
     allowInsecureTls: bool("ALLOW_INSECURE_TLS", false),
   },
   app: {
-    port: number("PORT", number("DATABRICKS_APP_PORT", 4000)),
+    port: number("PORT", 4000),
     pollIntervalMs: number("POLL_INTERVAL_MS", 15000),
     storeHistoryLimit: number("STORE_HISTORY_LIMIT", 40),
     enableRealFetch: bool("ENABLE_REAL_FETCH", false),

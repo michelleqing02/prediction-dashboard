@@ -1,12 +1,6 @@
 const express = require("express");
 const { getLatestWcbbFuturesDashboard } = require("../services/wcbbFuturesService");
 const { getPredictionMarketDashboard } = require("../services/predictionMarketCompService");
-const { loadWorkbookModel } = require("../services/wnbaWorkbookService");
-const {
-  loadResultsTracker,
-  saveResultsTrackerEntry,
-  deleteResultsTrackerEntry,
-} = require("../services/wnbaResultsTrackerService");
 const {
   getWcbbMatchPerformanceOverview,
   getWcbbMatchPerformanceEventDetail,
@@ -175,66 +169,6 @@ function createApiRouter(store) {
     } catch (error) {
       res.status(500).json({
         error: "Failed to load prediction market comp dashboard data",
-        detail: String(error.message || error),
-      });
-    }
-  });
-
-  router.get("/api/wnba-model", (_req, res) => {
-    try {
-      const payload = loadWorkbookModel();
-      res.json(payload);
-    } catch (error) {
-      res.status(500).json({
-        error: "Failed to load WNBA workbook model",
-        detail: String(error.message || error),
-      });
-    }
-  });
-
-  router.get("/api/wnba-results-tracker", (_req, res) => {
-    try {
-      const payload = loadResultsTracker();
-      res.json(payload);
-    } catch (error) {
-      res.status(500).json({
-        error: "Failed to load WNBA results tracker data",
-        detail: String(error.message || error),
-      });
-    }
-  });
-
-  router.post("/api/wnba-results-tracker/entries", (req, res) => {
-    try {
-      const payload = saveResultsTrackerEntry(req.body || {});
-      res.json(payload);
-    } catch (error) {
-      res.status(400).json({
-        error: "Failed to save WNBA results tracker entry",
-        detail: String(error.message || error),
-      });
-    }
-  });
-
-  router.post("/api/wnba-results-tracker/delete", (req, res) => {
-    try {
-      const payload = deleteResultsTrackerEntry(req.body?.entryId);
-      res.json(payload);
-    } catch (error) {
-      res.status(400).json({
-        error: "Failed to delete WNBA results tracker entry",
-        detail: String(error.message || error),
-      });
-    }
-  });
-
-  router.delete("/api/wnba-results-tracker/entries/:entryId", (req, res) => {
-    try {
-      const payload = deleteResultsTrackerEntry(req.params.entryId);
-      res.json(payload);
-    } catch (error) {
-      res.status(400).json({
-        error: "Failed to delete WNBA results tracker entry",
         detail: String(error.message || error),
       });
     }

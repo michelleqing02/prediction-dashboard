@@ -489,22 +489,6 @@ body[data-theme="pink"] .group-row .venue-col {
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
 }
 
-.compare-section-row .sticky-left,
-.compare-section-row .meta-col,
-.compare-section-row .venue-col {
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.01)), #183053 !important;
-}
-
-body[data-theme="pink"] .compare-section-row .sticky-left,
-body[data-theme="pink"] .compare-section-row .meta-col,
-body[data-theme="pink"] .compare-section-row .venue-col {
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.02)), #5a2752 !important;
-}
-
-.compare-section-row strong {
-  letter-spacing: 0.01em;
-}
-
 .board-row-button,
 .group-row-button,
 .meta-col {

@@ -5,18 +5,3 @@ backend/.env
 frontend/.env
 .tmp_agents/
 .tmp_*
-.databricks/
-*.log
-backend/data/*.tmp
-frontend.run.err.log
-frontend.run.log
-backend/server.err.log
-backend/server.out.log
-backend/server.run.log
-Michelle Trading Sheet 2026 updated.xlsx
-Michelle Trading Sheet copy.xlsx
-espn_*
-fav_*
-statmuse_*
-updated_2026_team_ratings.csv
-wnba_2025_pre_vs_regular_games.csv
